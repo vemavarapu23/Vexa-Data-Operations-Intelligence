@@ -7,17 +7,13 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from database import (
-    DB_PATH,
-    initialize_database,
-    save_audit_action,
-)
+from database import DB_PATH, initialize_database, save_audit_action
 from ai_assistant import analyze_finding
 
 
 # ============================================================
 # VEXA — DATA OPERATIONS INTELLIGENCE
-# Local SQLite + Public Demo + Groq AI
+# Local SQLite + Public Demo + Groq AI + Readable UI
 # ============================================================
 
 st.set_page_config(
@@ -32,11 +28,9 @@ st.set_page_config(
 # ============================================================
 
 def get_setting(name, default=""):
-    environment_value = os.getenv(name)
-
-    if environment_value is not None:
-        return environment_value
-
+    value = os.getenv(name)
+    if value is not None:
+        return value
     try:
         return st.secrets.get(name, default)
     except (FileNotFoundError, KeyError):
@@ -54,19 +48,16 @@ if not PUBLIC_DEMO:
 
 
 # ============================================================
-# ORIGINAL PINK AND WHITE DESIGN
+# VEXA PINK AND WHITE THEME — CONTRAST FIXED
 # ============================================================
 
 st.markdown("""
 <style>
-.stApp {
-    background: #fbf9fb;
-    color: #24212b;
-}
 
-[data-testid="stSidebar"] {
-    background: #ffffff;
-    border-right: 1px solid #f0e0e9;
+/* Main page */
+.stApp {
+    background-color: #fbf9fb !important;
+    color: #24212b !important;
 }
 
 .block-container {
@@ -74,42 +65,29 @@ st.markdown("""
     padding-top: 1.8rem;
 }
 
-h1, h2, h3 {
-    color: #26212c;
+/* Main text */
+h1, h2, h3, h4 {
+    color: #26212c !important;
     letter-spacing: -0.5px;
 }
 
-[data-testid="stMetric"] {
-    background: #ffffff;
-    border: 1px solid #efdfe8;
-    border-top: 3px solid #bc4074;
-    border-radius: 14px;
-    padding: 15px;
+[data-testid="stMain"] p,
+[data-testid="stMain"] label,
+[data-testid="stMain"] .stMarkdown {
+    color: #24212b;
 }
 
-[data-testid="stMetricValue"] {
-    color: #26212c;
-    font-weight: 800;
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid #f0e0e9;
 }
 
-.stButton > button {
-    border-radius: 10px;
-    font-weight: 600;
+[data-testid="stSidebar"] p {
+    color: #625b67;
 }
 
-.stButton > button[kind="primary"] {
-    background: #bc4074;
-    border-color: #bc4074;
-    color: white;
-}
-
-[data-testid="stFileUploader"] {
-    background: #ffffff;
-    border: 1px dashed #e3aac5;
-    border-radius: 12px;
-    padding: 10px;
-}
-
+/* Branding */
 .brand {
     display: flex;
     align-items: center;
@@ -120,8 +98,8 @@ h1, h2, h3 {
 .brandmark {
     width: 47px;
     height: 47px;
-    background: #bc4074;
-    color: white;
+    background-color: #bc4074;
+    color: #ffffff;
     border-radius: 12px;
     display: flex;
     align-items: center;
@@ -151,6 +129,204 @@ h1, h2, h3 {
     font-weight: 800;
     letter-spacing: 1.3px;
 }
+
+/* Metric cards */
+[data-testid="stMetric"] {
+    background: #ffffff !important;
+    border: 1px solid #efdfe8;
+    border-top: 3px solid #bc4074;
+    border-radius: 14px;
+    padding: 15px;
+}
+
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] * {
+    color: #625b67 !important;
+}
+
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] * {
+    color: #24212b !important;
+    font-weight: 800;
+}
+
+/* General buttons */
+.stButton > button,
+.stDownloadButton > button {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+}
+
+/* Primary pink buttons */
+.stButton > button[kind="primary"],
+.stButton > button[data-testid="stBaseButton-primary"] {
+    background-color: #bc4074 !important;
+    border-color: #bc4074 !important;
+    color: #ffffff !important;
+}
+
+.stButton > button[kind="primary"] *,
+.stButton > button[data-testid="stBaseButton-primary"] * {
+    color: #ffffff !important;
+}
+
+/* Secondary and download buttons */
+.stButton > button[kind="secondary"],
+.stButton > button[data-testid="stBaseButton-secondary"],
+.stDownloadButton > button {
+    background-color: #ffffff !important;
+    border: 1px solid #d8bac9 !important;
+    color: #24212b !important;
+}
+
+.stButton > button[kind="secondary"] *,
+.stButton > button[data-testid="stBaseButton-secondary"] *,
+.stDownloadButton > button * {
+    color: #24212b !important;
+}
+
+.stDownloadButton > button:hover,
+.stButton > button[kind="secondary"]:hover {
+    background-color: #fff0f6 !important;
+    border-color: #bc4074 !important;
+}
+
+/* Text boxes */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea {
+    background-color: #ffffff !important;
+    color: #24212b !important;
+    -webkit-text-fill-color: #24212b !important;
+    caret-color: #bc4074 !important;
+}
+
+/* Text box containers */
+[data-baseweb="input"],
+[data-baseweb="textarea"] {
+    background-color: #ffffff !important;
+    color: #24212b !important;
+    border-color: #d8bac9 !important;
+}
+
+/* Placeholder text */
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+    color: #817783 !important;
+    -webkit-text-fill-color: #817783 !important;
+    opacity: 1 !important;
+}
+
+/* Form labels */
+[data-testid="stTextInput"] label,
+[data-testid="stTextArea"] label,
+[data-testid="stSelectbox"] label,
+[data-testid="stCheckbox"] label,
+[data-testid="stRadio"] label {
+    color: #24212b !important;
+}
+
+/* Dropdowns */
+[data-baseweb="select"] > div {
+    background-color: #ffffff !important;
+    color: #24212b !important;
+    border-color: #d8bac9 !important;
+}
+
+[data-baseweb="select"] input,
+[data-baseweb="select"] span {
+    color: #24212b !important;
+    -webkit-text-fill-color: #24212b !important;
+}
+
+[data-baseweb="popover"],
+[data-baseweb="menu"],
+[role="listbox"] {
+    background-color: #ffffff !important;
+    color: #24212b !important;
+}
+
+[role="option"] {
+    color: #24212b !important;
+}
+
+[role="option"]:hover {
+    background-color: #fff0f6 !important;
+}
+
+/* Sidebar privacy text */
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
+    color: #625b67 !important;
+    opacity: 1 !important;
+}
+
+/* General captions */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] * {
+    color: #625b67 !important;
+}
+
+/* Alerts */
+[data-testid="stAlert"] {
+    border-radius: 10px;
+}
+
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+[data-testid="stAlert"] [data-testid="stMarkdownContainer"] * {
+    color: #24212b !important;
+}
+
+/* File uploader */
+[data-testid="stFileUploader"] {
+    background-color: #ffffff;
+    border: 1px dashed #e3aac5;
+    border-radius: 12px;
+    padding: 10px;
+}
+
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] button * {
+    color: #24212b !important;
+}
+
+/* Progress */
+[data-testid="stProgress"] [role="progressbar"] {
+    accent-color: #bc4074;
+}
+
+/* Table text readability */
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+    background-color: #ffffff;
+    border-radius: 10px;
+}
+
+/* Sidebar navigation buttons */
+[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
+    background-color: #ffffff !important;
+    color: #24212b !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background-color: #bc4074 !important;
+    color: #ffffff !important;
+}
+
+/* Focus outlines */
+input:focus,
+textarea:focus,
+button:focus-visible {
+    outline-color: #bc4074 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -163,40 +339,30 @@ S = st.session_state
 
 if "initialized" not in S:
     S.initialized = True
-
     S.a = None
     S.b = None
-
     S.original_a = None
     S.original_b = None
-
     S.row_ids_a = []
     S.row_ids_b = []
-
     S.na = "Report A"
     S.nb = "Report B"
-
     S.ka = None
     S.kb = None
-
     S.company = "My Workspace"
-
     S.findings = pd.DataFrame()
     S.reviews = {}
     S.history = []
-
     S.deletions = 0
     S.load_number = 0
     S.audit_counter = 0
-
     S.page = "Dashboard"
-
     S.ai_response = None
     S.ai_context = None
 
 
 # ============================================================
-# FILE AND DATA HELPERS
+# BASIC HELPERS
 # ============================================================
 
 def safe_text(value):
@@ -207,16 +373,13 @@ def safe_text(value):
 
 def normalize(df):
     result = df.copy()
-
     result.columns = [
         str(column).strip()
         for column in result.columns
     ]
 
     if result.columns.duplicated().any():
-        raise ValueError(
-            "Duplicate column names found."
-        )
+        raise ValueError("Duplicate column names found.")
 
     return (
         result.fillna("")
@@ -228,9 +391,7 @@ def normalize(df):
 
 def read_upload(file):
     if len(file.getvalue()) > 8 * 1024 * 1024:
-        raise ValueError(
-            "Maximum file size is 8 MB."
-        )
+        raise ValueError("Maximum file size is 8 MB.")
 
     stream = io.BytesIO(file.getvalue())
 
@@ -240,40 +401,29 @@ def read_upload(file):
             dtype=str,
             keep_default_na=False,
         )
-
     elif file.name.lower().endswith(".xlsx"):
         df = pd.read_excel(
             stream,
             dtype=str,
             keep_default_na=False,
         )
-
     else:
-        raise ValueError(
-            "Only CSV and XLSX files are supported."
-        )
+        raise ValueError("Only CSV and XLSX files are supported.")
 
     if len(df) > 25000:
-        raise ValueError(
-            "Maximum 25,000 rows per report."
-        )
+        raise ValueError("Maximum 25,000 rows per report.")
 
     return normalize(df)
 
 
 def csv_bytes(df):
-    return df.to_csv(
-        index=False
-    ).encode("utf-8-sig")
+    return df.to_csv(index=False).encode("utf-8-sig")
 
 
 def xlsx_bytes(df):
     buffer = io.BytesIO()
 
-    with pd.ExcelWriter(
-        buffer,
-        engine="openpyxl",
-    ) as writer:
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(
             writer,
             sheet_name="Report",
@@ -284,13 +434,11 @@ def xlsx_bytes(df):
 
 
 def timestamp():
-    return datetime.now().strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def public_view(frame):
-    return frame[
+def public_view(df):
+    return df[
         [
             "Finding ID",
             "Record",
@@ -302,7 +450,7 @@ def public_view(frame):
 
 
 # ============================================================
-# AUDIT HISTORY: SQLITE LOCAL / SESSION PUBLIC
+# AUDIT HISTORY
 # ============================================================
 
 AUDIT_COLUMNS = [
@@ -350,8 +498,6 @@ def log_history(
 ):
     event_time = timestamp()
 
-    # Local mode: save to permanent SQLite first.
-    # Public mode: do not write to shared database.
     if not PUBLIC_DEMO:
         save_audit_action(
             event_time,
@@ -376,7 +522,7 @@ def log_history(
 
 
 # ============================================================
-# FICTIONAL DEMO DATA
+# FICTIONAL SAMPLE DATA
 # ============================================================
 
 def sample_files():
@@ -426,20 +572,16 @@ def sample_files():
             "Owner": "Team B",
         })
 
-    return (
-        pd.DataFrame(a),
-        pd.DataFrame(b),
-    )
+    return pd.DataFrame(a), pd.DataFrame(b)
 
 
 # ============================================================
-# DATA COMPARISON ENGINE
+# COMPARISON ENGINE
 # ============================================================
 
 def compare(a, b, ka, kb, na, nb):
     ids_a = a[ka].map(safe_text)
     ids_b = b[kb].map(safe_text)
-
     findings = []
 
     def add(
@@ -456,9 +598,7 @@ def compare(a, b, ka, kb, na, nb):
         target="",
     ):
         findings.append({
-            "Finding ID": (
-                f"F-{len(findings) + 1:03d}"
-            ),
+            "Finding ID": f"F-{len(findings) + 1:03d}",
             "Record": str(record),
             "Issue": issue,
             "What Vexa found": description,
@@ -472,6 +612,7 @@ def compare(a, b, ka, kb, na, nb):
             "_target": target,
         })
 
+    # Missing and duplicate IDs
     for name, ids, side in [
         (na, ids_a, "A"),
         (nb, ids_b, "B"),
@@ -481,36 +622,21 @@ def compare(a, b, ka, kb, na, nb):
                 add(
                     f"{name}, row {idx + 2}",
                     "Missing ID",
-                    (
-                        f"No matching ID in "
-                        f"{name}, row {idx + 2}."
-                    ),
-                    (
-                        "Confirm the original ID. "
-                        "Do not invent an identifier."
-                    ),
+                    f"No matching ID in {name}, row {idx + 2}.",
+                    "Confirm the original ID. Do not invent an identifier.",
                     kind="missing_id",
                     target=side,
                 )
 
-        counts = ids[
-            ids != ""
-        ].value_counts()
+        counts = ids[ids != ""].value_counts()
 
-        for key, count in counts[
-            counts > 1
-        ].items():
+        for key, count in counts[counts > 1].items():
             add(
                 key,
                 "Possible duplicate",
-                (
-                    f"{key} occurs {count} "
-                    f"times in {name}."
-                ),
-                (
-                    "Check whether these rows are true "
-                    "duplicates or valid separate entries."
-                ),
+                f"{key} occurs {count} times in {name}.",
+                "Check whether these rows are true duplicates "
+                "or valid separate entries.",
                 kind="duplicate",
                 target=side,
             )
@@ -527,86 +653,51 @@ def compare(a, b, ka, kb, na, nb):
         if key
     }
 
-    for key in sorted(
-        set(loc_a) - set(loc_b)
-    ):
+    for key in sorted(set(loc_a) - set(loc_b)):
         add(
             key,
             "Only in first report",
-            (
-                f"{key} appears in {na}, "
-                f"but not in {nb}."
-            ),
-            (
-                "Check whether this record "
-                "should appear in both reports."
-            ),
+            f"{key} appears in {na}, but not in {nb}.",
+            "Check whether this record should appear in both reports.",
             kind="only_a",
         )
 
-    for key in sorted(
-        set(loc_b) - set(loc_a)
-    ):
+    for key in sorted(set(loc_b) - set(loc_a)):
         add(
             key,
             "Only in second report",
-            (
-                f"{key} appears in {nb}, "
-                f"but not in {na}."
-            ),
-            (
-                "Check whether this difference "
-                "is expected."
-            ),
+            f"{key} appears in {nb}, but not in {na}.",
+            "Check whether this difference is expected.",
             kind="only_b",
         )
 
     common_cols = [
-        column
-        for column in a.columns
-        if column in b.columns
-        and column not in {ka, kb}
+        col for col in a.columns
+        if col in b.columns and col not in {ka, kb}
     ]
 
-    for key in sorted(
-        set(loc_a) & set(loc_b)
-    ):
-        if (
-            len(loc_a[key]) != 1
-            or len(loc_b[key]) != 1
-        ):
+    for key in sorted(set(loc_a) & set(loc_b)):
+        if len(loc_a[key]) != 1 or len(loc_b[key]) != 1:
             continue
 
         ia = loc_a[key][0]
         ib = loc_b[key][0]
 
-        for column in common_cols:
-            va = safe_text(
-                a.at[ia, column]
-            )
-
-            vb = safe_text(
-                b.at[ib, column]
-            )
+        for col in common_cols:
+            va = safe_text(a.at[ia, col])
+            vb = safe_text(b.at[ib, col])
 
             if va != vb:
                 add(
                     key,
                     "Different values",
-                    (
-                        f'{column}: '
-                        f'{na} = "{va}"; '
-                        f'{nb} = "{vb}".'
-                    ),
-                    (
-                        "Verify the correct value using "
-                        "a trusted source before changing "
-                        "either report."
-                    ),
+                    f'{col}: {na} = "{va}"; {nb} = "{vb}".',
+                    "Verify the correct value using a trusted "
+                    "source before changing either report.",
                     kind="value",
                     ia=ia,
                     ib=ib,
-                    column=column,
+                    column=col,
                     va=va,
                     vb=vb,
                 )
@@ -647,15 +738,7 @@ def refresh():
     S.ai_context = None
 
 
-def load_reports(
-    a,
-    b,
-    na,
-    nb,
-    ka,
-    kb,
-    company,
-):
+def load_reports(a, b, na, nb, ka, kb, company):
     S.original_a = normalize(a)
     S.original_b = normalize(b)
 
@@ -667,83 +750,61 @@ def load_reports(
 
     S.na = na
     S.nb = nb
-
     S.ka = ka
     S.kb = kb
-
     S.company = company
 
     S.reviews = {}
-    S.deletions = 0
-    S.load_number += 1
-
-    # Clear session-only history for a new comparison.
-    # Permanent local SQLite history remains intact.
     S.history = []
     S.audit_counter = 0
+    S.deletions = 0
+    S.load_number += 1
 
     refresh()
     S.page = "Dashboard"
 
 
 # ============================================================
-# ORIGINAL VS CORRECTED CHANGE DETECTION
+# CHANGE REPORT
 # ============================================================
 
-def build_change_report(
-    original,
-    corrected,
-    row_ids,
-    key_col,
-):
+def build_change_report(original, corrected, row_ids, key_col):
     changes = []
 
-    current_by_original_id = {
+    current_map = {
         original_id: current_idx
-        for current_idx, original_id
-        in enumerate(row_ids)
+        for current_idx, original_id in enumerate(row_ids)
     }
 
-    for original_idx in range(len(original)):
-        record = safe_text(
-            original.at[original_idx, key_col]
-        )
+    for orig_idx in range(len(original)):
+        record = safe_text(original.at[orig_idx, key_col])
+        excel_row = orig_idx + 2
 
-        excel_row = original_idx + 2
-
-        if original_idx not in current_by_original_id:
+        if orig_idx not in current_map:
             changes.append({
                 "Change Type": "Deleted row",
                 "Record ID": record,
                 "Original Excel Row": excel_row,
                 "Column": "Entire row",
                 "Original Value": str(
-                    original.loc[original_idx].to_dict()
+                    original.loc[orig_idx].to_dict()
                 ),
                 "Corrected Value": "(Row removed)",
             })
-
             continue
 
-        current_idx = current_by_original_id[
-            original_idx
-        ]
+        curr_idx = current_map[orig_idx]
 
-        for column in original.columns:
-            old = safe_text(
-                original.at[original_idx, column]
-            )
-
-            new = safe_text(
-                corrected.at[current_idx, column]
-            )
+        for col in original.columns:
+            old = safe_text(original.at[orig_idx, col])
+            new = safe_text(corrected.at[curr_idx, col])
 
             if old != new:
                 changes.append({
                     "Change Type": "Value corrected",
                     "Record ID": record,
                     "Original Excel Row": excel_row,
-                    "Column": column,
+                    "Column": col,
                     "Original Value": old,
                     "Corrected Value": new,
                 })
@@ -761,11 +822,7 @@ def build_change_report(
     )
 
 
-def filtered_preview(
-    frame,
-    key_col,
-    search_text,
-):
+def filtered_preview(frame, key_col, search_text):
     if not search_text.strip():
         return frame
 
@@ -782,7 +839,7 @@ def filtered_preview(
 
 
 # ============================================================
-# ORIGINAL SIDEBAR
+# SIDEBAR
 # ============================================================
 
 with st.sidebar:
@@ -814,11 +871,7 @@ with st.sidebar:
         if st.button(
             page,
             use_container_width=True,
-            type=(
-                "primary"
-                if S.page == page
-                else "secondary"
-            ),
+            type="primary" if S.page == page else "secondary",
             key=f"nav_{page}",
         ):
             S.page = page
@@ -859,73 +912,49 @@ if S.page == "Dashboard":
         )
 
         st.write(
-            "Vexa compares records, identifies "
-            "differences, supports investigations, "
-            "and allows employee-approved corrections."
+            "Vexa compares records, identifies differences, "
+            "supports investigations, and allows "
+            "employee-approved corrections."
         )
 
-        if st.button(
-            "Upload Your Reports",
-            type="primary",
-        ):
+        if st.button("Upload Your Reports", type="primary"):
             S.page = "Upload & Compare"
             st.rerun()
 
     else:
         f = S.findings
 
-        st.caption(
-            f"{S.company} · {S.na} vs {S.nb}"
-        )
+        st.caption(f"{S.company} · {S.na} vs {S.nb}")
 
         c1, c2, c3, c4, c5 = st.columns(5)
 
-        c1.metric(
-            "Rows in Report A",
-            len(S.a),
-        )
-
-        c2.metric(
-            "Rows in Report B",
-            len(S.b),
-        )
-
-        c3.metric(
-            "Current differences",
-            len(f),
-        )
-
-        c4.metric(
-            "Reviews saved",
-            len(S.reviews),
-        )
-
+        c1.metric("Rows in Report A", len(S.a))
+        c2.metric("Rows in Report B", len(S.b))
+        c3.metric("Current differences", len(f))
+        c4.metric("Reviews saved", len(S.reviews))
         c5.metric(
             "Corrections applied",
             sum(
-                action["Action"] == "Correction applied"
-                for action in S.history
+                item["Action"] == "Correction applied"
+                for item in S.history
             ),
         )
 
         st.caption(
-            "Current differences come from the latest "
-            "comparison. Corrections applied counts "
-            "verified value changes in this session."
+            "Current differences come from the latest comparison. "
+            "Corrections applied counts approved value changes "
+            "in this session."
         )
 
         if S.deletions:
             st.caption(
-                "Verified duplicate rows removed: "
-                f"{S.deletions}"
+                f"Verified duplicate rows removed: {S.deletions}"
             )
 
         left, right = st.columns([1.5, 1])
 
         with left:
-            st.subheader(
-                "Differences by Category"
-            )
+            st.subheader("Differences by Category")
 
             if not f.empty:
                 st.bar_chart(
@@ -935,14 +964,11 @@ if S.page == "Dashboard":
                 )
             else:
                 st.success(
-                    "No differences found with "
-                    "these comparison rules."
+                    "No differences found with these comparison rules."
                 )
 
         with right:
-            st.subheader(
-                "Review Activity"
-            )
+            st.subheader("Review Activity")
 
             st.metric(
                 "Findings reviewed this comparison",
@@ -950,15 +976,11 @@ if S.page == "Dashboard":
             )
 
             st.progress(
-                min(
-                    len(S.reviews) / max(len(f), 1),
-                    1.0,
-                )
+                min(len(S.reviews) / max(len(f), 1), 1.0)
             )
 
             st.write(
-                "A reviewed finding is not "
-                "necessarily resolved."
+                "A reviewed finding is not necessarily resolved."
             )
 
             if st.button(
@@ -968,9 +990,7 @@ if S.page == "Dashboard":
                 S.page = "Investigations"
                 st.rerun()
 
-        st.subheader(
-            "Recent Findings"
-        )
+        st.subheader("Recent Findings")
 
         if not f.empty:
             st.dataframe(
@@ -989,14 +1009,12 @@ elif S.page == "Upload & Compare":
 
     st.write(
         "Upload two CSV or Excel files. "
-        "Choose the matching identifier "
-        "column in both files."
+        "Choose the matching identifier column in both files."
     )
 
     if PUBLIC_DEMO:
         st.warning(
-            "Public demo: use only fictional, "
-            "non-sensitive reports."
+            "Public demo: use only fictional, non-sensitive reports."
         )
 
     company = st.text_input(
@@ -1037,8 +1055,7 @@ elif S.page == "Upload & Compare":
 
             if aa.empty or bb.empty:
                 st.error(
-                    "Both reports need at least "
-                    "one data row."
+                    "Both reports need at least one data row."
                 )
 
             else:
@@ -1069,12 +1086,10 @@ elif S.page == "Upload & Compare":
                         st.error(
                             "Give each report a name."
                         )
-
                     elif na.strip() == nb.strip():
                         st.error(
                             "Report names must be different."
                         )
-
                     else:
                         load_reports(
                             aa,
@@ -1085,27 +1100,20 @@ elif S.page == "Upload & Compare":
                             kb,
                             company.strip() or "My Workspace",
                         )
-
                         st.rerun()
 
         except Exception as ex:
-            st.error(
-                f"Cannot read file: {ex}"
-            )
+            st.error(f"Cannot read file: {ex}")
 
     st.divider()
 
-    with st.expander(
-        "Optional: fictional sample data"
-    ):
+    with st.expander("Optional: fictional sample data"):
         st.caption(
             "Sample reports are loaded only "
             "when you click the button."
         )
 
-        if st.button(
-            "Load fictional sample reports"
-        ):
+        if st.button("Load fictional sample reports"):
             aa, bb = sample_files()
 
             load_reports(
@@ -1117,7 +1125,6 @@ elif S.page == "Upload & Compare":
                 "ID",
                 "Example Company",
             )
-
             st.rerun()
 
     st.info(
@@ -1140,43 +1147,31 @@ elif S.page == "Investigations":
     )
 
     if S.a is None:
-        st.info(
-            "Upload and compare two reports first."
-        )
+        st.info("Upload and compare two reports first.")
 
     elif S.findings.empty:
-        st.success(
-            "No differences to investigate."
-        )
+        st.success("No differences to investigate.")
 
     else:
         f = S.findings
 
         categories = [
             "All"
-        ] + sorted(
-            f["Issue"].unique().tolist()
-        )
+        ] + sorted(f["Issue"].unique().tolist())
 
         category = st.selectbox(
             "Filter findings",
             categories,
         )
 
-        if category == "All":
-            filtered = f
-        else:
-            filtered = f[
-                f["Issue"] == category
-            ]
+        filtered = (
+            f if category == "All"
+            else f[f["Issue"] == category]
+        )
 
         st.dataframe(
             public_view(filtered)[
-                [
-                    "Finding ID",
-                    "Record",
-                    "Issue",
-                ]
+                ["Finding ID", "Record", "Issue"]
             ],
             hide_index=True,
             use_container_width=True,
@@ -1199,30 +1194,17 @@ elif S.page == "Investigations":
                 f"{record} · {issue['Issue']}"
             )
 
-            st.write(
-                "**What Vexa found**"
-            )
-            st.write(
-                issue["What Vexa found"]
-            )
+            st.write("**What Vexa found**")
+            st.write(issue["What Vexa found"])
 
-            st.write(
-                "**What to investigate**"
-            )
-            st.write(
-                issue["Suggested check"]
-            )
+            st.write("**What to investigate**")
+            st.write(issue["Suggested check"])
 
-            previous = S.reviews.get(
-                chosen, {}
-            )
+            previous = S.reviews.get(chosen, {})
 
             reviewer = st.text_input(
                 "Reviewed by",
-                value=previous.get(
-                    "Reviewer",
-                    "Analyst",
-                ),
+                value=previous.get("Reviewer", "Analyst"),
                 key="reviewer_" + suffix,
             )
 
@@ -1237,9 +1219,7 @@ elif S.page == "Investigations":
                 "Decision",
                 decisions,
                 index=(
-                    decisions.index(
-                        previous["Decision"]
-                    )
+                    decisions.index(previous["Decision"])
                     if previous.get("Decision") in decisions
                     else 0
                 ),
@@ -1248,10 +1228,7 @@ elif S.page == "Investigations":
 
             notes = st.text_area(
                 "What did you verify?",
-                value=previous.get(
-                    "Notes",
-                    "",
-                ),
+                value=previous.get("Notes", ""),
                 key="notes_" + suffix,
             )
 
@@ -1261,9 +1238,7 @@ elif S.page == "Investigations":
                 key="save_" + suffix,
             ):
                 if not reviewer.strip():
-                    st.error(
-                        "Enter the reviewer name."
-                    )
+                    st.error("Enter the reviewer name.")
 
                 else:
                     try:
@@ -1290,18 +1265,16 @@ elif S.page == "Investigations":
 
                         if PUBLIC_DEMO:
                             st.success(
-                                "Review saved for this "
-                                "demo session."
+                                "Review saved for this demo session."
                             )
                         else:
                             st.success(
-                                "Review saved permanently "
-                                "in SQLite."
+                                "Review saved permanently in SQLite."
                             )
 
-        # ----------------------------------------------
+        # ----------------------------------------------------
         # VERIFIED VALUE CORRECTION
-        # ----------------------------------------------
+        # ----------------------------------------------------
 
         if issue["_kind"] == "value":
             with st.container(border=True):
@@ -1310,8 +1283,8 @@ elif S.page == "Investigations":
                 )
 
                 st.write(
-                    "Changes are applied to a working "
-                    "copy. Original uploads remain unchanged."
+                    "Changes are applied to a working copy. "
+                    "Original uploads remain unchanged."
                 )
 
                 target = st.radio(
@@ -1325,7 +1298,6 @@ elif S.page == "Investigations":
                     frame = S.a
                     idx = int(issue["_ia"])
                     original = issue["_va"]
-
                 else:
                     frame = S.b
                     idx = int(issue["_ib"])
@@ -1333,13 +1305,8 @@ elif S.page == "Investigations":
 
                 column = issue["_column"]
 
-                st.write(
-                    f"**Column:** {column}"
-                )
-
-                st.write(
-                    f"**Current value:** `{original}`"
-                )
+                st.write(f"**Column:** {column}")
+                st.write(f"**Current value:** `{original}`")
 
                 verified = st.text_input(
                     "Correct value (verified by employee)",
@@ -1349,15 +1316,14 @@ elif S.page == "Investigations":
                 proof = st.text_area(
                     "How did you verify this value?",
                     placeholder=(
-                        "Example: Checked approved "
-                        "source report."
+                        "Example: Checked the approved source report."
                     ),
                     key="proof_" + suffix,
                 )
 
                 confirm = st.checkbox(
-                    "I verified this correction and "
-                    "approve applying it to a copy.",
+                    "I verified this correction and approve "
+                    "applying it to a copy.",
                     key="confirm_" + suffix,
                 )
 
@@ -1382,10 +1348,7 @@ elif S.page == "Investigations":
                             "Selected row no longer exists."
                         )
 
-                    elif (
-                        safe_text(frame.at[idx, column])
-                        != original
-                    ):
+                    elif safe_text(frame.at[idx, column]) != original:
                         st.error(
                             "The value has changed. "
                             "Compare again before correcting."
@@ -1427,14 +1390,14 @@ elif S.page == "Investigations":
                             refresh()
                             st.rerun()
 
-        # ----------------------------------------------
+        # ----------------------------------------------------
         # VERIFIED DUPLICATE DELETION
-        # ----------------------------------------------
+        # ----------------------------------------------------
 
         elif issue["_kind"] == "duplicate":
             st.info(
-                "Possible duplicates must be "
-                "verified before deleting any row."
+                "Possible duplicates must be verified "
+                "before deleting any row."
             )
 
             with st.container(border=True):
@@ -1449,7 +1412,6 @@ elif S.page == "Investigations":
                     key_col = S.ka
                     report_name = S.na
                     row_ids = S.row_ids_a
-
                 else:
                     frame = S.b
                     key_col = S.kb
@@ -1457,8 +1419,7 @@ elif S.page == "Investigations":
                     row_ids = S.row_ids_b
 
                 candidates = frame[
-                    frame[key_col].map(safe_text)
-                    == record
+                    frame[key_col].map(safe_text) == record
                 ]
 
                 st.write(
@@ -1497,9 +1458,7 @@ elif S.page == "Investigations":
                     key="delete_row_" + suffix,
                 )
 
-                st.write(
-                    "**Selected row preview**"
-                )
+                st.write("**Selected row preview**")
 
                 st.dataframe(
                     frame.loc[[selected_row]],
@@ -1510,16 +1469,16 @@ elif S.page == "Investigations":
                 deletion_reason = st.text_area(
                     "Why is this exact row safe to delete?",
                     placeholder=(
-                        "Example: Verified against "
-                        "source records; accidental duplicate."
+                        "Example: Verified against source records; "
+                        "accidental duplicate."
                     ),
                     key="delete_reason_" + suffix,
                 )
 
                 deletion_approved = st.checkbox(
-                    "I verified this exact duplicate "
-                    "and approve removing it from "
-                    "the corrected working copy.",
+                    "I verified this exact duplicate and "
+                    "approve removing it from the "
+                    "corrected working copy.",
                     key="delete_approval_" + suffix,
                 )
 
@@ -1528,9 +1487,7 @@ elif S.page == "Investigations":
                     type="primary",
                     key="delete_button_" + suffix,
                 ):
-                    saved_review = S.reviews.get(
-                        chosen, {}
-                    )
+                    saved_review = S.reviews.get(chosen, {})
 
                     if (
                         saved_review.get("Decision")
@@ -1563,10 +1520,7 @@ elif S.page == "Investigations":
 
                     elif (
                         safe_text(
-                            frame.at[
-                                selected_row,
-                                key_col,
-                            ]
+                            frame.at[selected_row, key_col]
                         ) != record
                     ):
                         st.error(
@@ -1605,8 +1559,8 @@ elif S.page == "Investigations":
                         ]
 
                         detail = (
-                            f"{report_name}, original "
-                            f"Excel row {original_row_id + 2}. "
+                            f"{report_name}, original Excel "
+                            f"row {original_row_id + 2}. "
                             f"Deleted: {removed}. "
                             f"Evidence: {deletion_reason}"
                         )
@@ -1630,7 +1584,6 @@ elif S.page == "Investigations":
                             if side == "A":
                                 S.a = updated
                                 S.row_ids_a = updated_row_ids
-
                             else:
                                 S.b = updated
                                 S.row_ids_b = updated_row_ids
@@ -1648,13 +1601,11 @@ elif S.page == "Investigations":
 
 
 # ============================================================
-# PAGE 4 — REAL GROQ AI ASSISTANT
+# PAGE 4 — GROQ AI ASSISTANT
 # ============================================================
 
 elif S.page == "AI Assistant":
-    st.title(
-        "AI Investigation Assistant"
-    )
+    st.title("AI Investigation Assistant")
 
     st.write(
         "Understand data differences, explore possible "
@@ -1679,9 +1630,7 @@ elif S.page == "AI Assistant":
         )
 
     else:
-        st.subheader(
-            "Select a Finding"
-        )
+        st.subheader("Select a Finding")
 
         chosen = st.selectbox(
             "Finding ID",
@@ -1702,27 +1651,14 @@ elif S.page == "AI Assistant":
                 f"**Issue:** {issue['Issue']}"
             )
 
-            st.write(
-                "**What Vexa detected**"
-            )
+            st.write("**What Vexa detected**")
+            st.write(issue["What Vexa found"])
 
-            st.write(
-                issue["What Vexa found"]
-            )
-
-            st.write(
-                "**Existing suggested check**"
-            )
-
-            st.write(
-                issue["Suggested check"]
-            )
+            st.write("**Existing suggested check**")
+            st.write(issue["Suggested check"])
 
         st.divider()
-
-        st.subheader(
-            "Ask Vexa AI"
-        )
+        st.subheader("Ask Vexa AI")
 
         st.write(
             "Get possible business causes, impact, "
@@ -1748,9 +1684,8 @@ elif S.page == "AI Assistant":
 
         st.caption(
             "Only the selected finding description, "
-            "issue type, suggested check, and optional "
-            "question are sent to Groq. Full Excel "
-            "reports are not sent."
+            "issue type, suggested check, and optional question "
+            "are sent to Groq. Full Excel reports are not sent."
         )
 
         ai_context = (
@@ -1776,10 +1711,7 @@ elif S.page == "AI Assistant":
 
             else:
                 try:
-                    api_key = get_setting(
-                        "GROQ_API_KEY",
-                        "",
-                    )
+                    api_key = get_setting("GROQ_API_KEY", "")
 
                     if not api_key:
                         st.error(
@@ -1790,9 +1722,7 @@ elif S.page == "AI Assistant":
 
                     else:
                         safe_finding = {
-                            "Issue": str(
-                                issue["Issue"]
-                            ),
+                            "Issue": str(issue["Issue"]),
                             "What Vexa found": str(
                                 issue["What Vexa found"]
                             ),
@@ -1822,7 +1752,7 @@ elif S.page == "AI Assistant":
                     if error_name == "RateLimitError":
                         st.warning(
                             "Groq free-tier limit reached. "
-                            "Try again when free quota resets."
+                            "Try again when quota resets."
                         )
 
                     elif error_name == "AuthenticationError":
@@ -1854,15 +1784,10 @@ elif S.page == "AI Assistant":
             and S.ai_context == ai_context
         ):
             st.divider()
-
-            st.subheader(
-                "Vexa AI Analysis"
-            )
+            st.subheader("Vexa AI Analysis")
 
             with st.container(border=True):
-                st.markdown(
-                    S.ai_response
-                )
+                st.markdown(S.ai_response)
 
             st.caption(
                 "AI-generated guidance may be inaccurate. "
@@ -1889,9 +1814,7 @@ elif S.page == "AI Assistant":
 # ============================================================
 
 elif S.page == "Review History":
-    st.title(
-        "Review History"
-    )
+    st.title("Review History")
 
     if PUBLIC_DEMO:
         st.caption(
@@ -1899,12 +1822,11 @@ elif S.page == "Review History":
             "to your current session. They are not "
             "saved to a shared database."
         )
-
     else:
         st.caption(
-            "Audit history is saved in the local "
-            "SQLite database. Saved actions remain "
-            "available after restarting Vexa."
+            "Audit history is saved in the local SQLite "
+            "database. Saved actions remain available "
+            "after restarting Vexa."
         )
 
     try:
@@ -1922,11 +1844,10 @@ elif S.page == "Review History":
                     f"{len(history)} audit actions "
                     "in your demo session."
                 )
-
             else:
                 st.success(
-                    f"{len(history)} saved audit actions "
-                    "found in SQLite."
+                    f"{len(history)} saved audit "
+                    "actions found in SQLite."
                 )
 
             st.dataframe(
@@ -1952,7 +1873,6 @@ elif S.page == "Review History":
             "Demo history is not permanent. "
             "Download it before your session ends."
         )
-
     else:
         st.caption(
             "Audit actions are permanent locally. "
@@ -1966,9 +1886,7 @@ elif S.page == "Review History":
 # ============================================================
 
 elif S.page == "Export Results":
-    st.title(
-        "Export Results"
-    )
+    st.title("Export Results")
 
     st.write(
         "Preview original and corrected reports, "
@@ -2005,9 +1923,7 @@ elif S.page == "Export Results":
             report_name = S.nb
             prefix = "vexa_report_b"
 
-        st.subheader(
-            report_name
-        )
+        st.subheader(report_name)
 
         changes = build_change_report(
             original_df,
@@ -2016,19 +1932,19 @@ elif S.page == "Export Results":
             key_col,
         )
 
-        col1, col2, col3 = st.columns(3)
+        c1, c2, c3 = st.columns(3)
 
-        col1.metric(
+        c1.metric(
             "Original rows",
             len(original_df),
         )
 
-        col2.metric(
+        c2.metric(
             "Current rows",
             len(corrected_df),
         )
 
-        col3.metric(
+        c3.metric(
             "Changes made",
             len(changes),
         )
@@ -2059,9 +1975,7 @@ elif S.page == "Export Results":
         )
 
         if preview_mode == "Original Preview":
-            st.subheader(
-                "Original Uploaded Report"
-            )
+            st.subheader("Original Uploaded Report")
 
             result = filtered_preview(
                 original_df,
@@ -2070,8 +1984,7 @@ elif S.page == "Export Results":
             )
 
             st.caption(
-                f"Showing {len(result)} "
-                "matching original rows."
+                f"Showing {len(result)} matching original rows."
             )
 
             st.dataframe(
@@ -2086,9 +1999,7 @@ elif S.page == "Export Results":
             )
 
         elif preview_mode == "Corrected Preview":
-            st.subheader(
-                "Current Corrected Report"
-            )
+            st.subheader("Current Corrected Report")
 
             result = filtered_preview(
                 corrected_df,
@@ -2097,8 +2008,7 @@ elif S.page == "Export Results":
             )
 
             st.caption(
-                f"Showing {len(result)} "
-                "matching corrected rows."
+                f"Showing {len(result)} matching corrected rows."
             )
 
             st.dataframe(
@@ -2113,9 +2023,7 @@ elif S.page == "Export Results":
             )
 
         else:
-            st.subheader(
-                "Original vs Corrected Changes"
-            )
+            st.subheader("Original vs Corrected Changes")
 
             if search_text.strip():
                 visible_changes = changes[
@@ -2128,7 +2036,6 @@ elif S.page == "Export Results":
                         na=False,
                     )
                 ]
-
             else:
                 visible_changes = changes
 
@@ -2137,7 +2044,6 @@ elif S.page == "Export Results":
                     "No changes found for this search. "
                     "Try another Request ID."
                 )
-
             else:
                 st.dataframe(
                     visible_changes,
@@ -2151,17 +2057,17 @@ elif S.page == "Export Results":
                 )
 
         st.divider()
-
-        st.subheader(
-            "Download Reports"
-        )
+        st.subheader("Download Reports")
 
         original_col, corrected_col = st.columns(2)
 
+        excel_mime = (
+            "application/vnd.openxmlformats-"
+            "officedocument.spreadsheetml.sheet"
+        )
+
         with original_col:
-            st.write(
-                "**Original Report**"
-            )
+            st.write("**Original Report**")
 
             st.download_button(
                 "Download Original — CSV",
@@ -2177,23 +2083,17 @@ elif S.page == "Export Results":
                     "Download Original — Excel",
                     xlsx_bytes(original_df),
                     file_name=f"{prefix}_original.xlsx",
-                    mime=(
-                        "application/vnd.openxmlformats-"
-                        "officedocument.spreadsheetml.sheet"
-                    ),
+                    mime=excel_mime,
                     use_container_width=True,
                     key="export_original_excel",
                 )
-
             except ImportError:
                 st.caption(
                     "Install openpyxl for Excel download."
                 )
 
         with corrected_col:
-            st.write(
-                "**Corrected Report**"
-            )
+            st.write("**Corrected Report**")
 
             st.download_button(
                 "Download Corrected — CSV",
@@ -2209,30 +2109,21 @@ elif S.page == "Export Results":
                     "Download Corrected — Excel",
                     xlsx_bytes(corrected_df),
                     file_name=f"{prefix}_corrected.xlsx",
-                    mime=(
-                        "application/vnd.openxmlformats-"
-                        "officedocument.spreadsheetml.sheet"
-                    ),
+                    mime=excel_mime,
                     use_container_width=True,
                     key="export_corrected_excel",
                 )
-
             except ImportError:
                 st.caption(
                     "Install openpyxl for Excel download."
                 )
 
         st.divider()
-
-        st.subheader(
-            "Additional Reports"
-        )
+        st.subheader("Additional Reports")
 
         st.download_button(
             "Download difference report",
-            csv_bytes(
-                public_view(S.findings)
-            ),
+            csv_bytes(public_view(S.findings)),
             file_name="vexa_differences.csv",
             mime="text/csv",
         )
