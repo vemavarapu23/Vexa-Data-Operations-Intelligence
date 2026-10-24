@@ -1169,8 +1169,63 @@ def render_single_ai():
     st.write(f"**Suggested check:** {issue['Suggested check']}")
     question=st.text_area("Optional investigation question",max_chars=500,key="single_ai_question")
     confirmed=st.checkbox("I confirm the finding and question contain only fictional, non-sensitive information suitable for an external AI service.",key="single_ai_confirm")
-    # Do not transmit actual uploaded cell values or identifiers to the model.
-    safe_finding={"Issue":str(issue['Issue']),"What Vexa found":"An issue of this type was detected in an uploaded file. No column names or row contents are provided.","Suggested check":str(issue['Suggested check'])}
+    # Share only structural context, not uploaded row contents or record IDs.
+    # The source row mapping remains correct even after approved deletions.
+    current_excel_row = int(issue["Excel Row (current)"])
+    current_index = current_excel_row - 2
+    if 0 <= current_index < len(S.single_row_ids):
+        original_excel_row = S.single_row_ids[current_index] + 2
+    else:
+        original_excel_row = None
+
+    issue_type = str(issue["Issue"])
+    # Column headers can themselves be sensitive. Truncate and use only when
+    # the analyst confirms the selected finding is safe for external AI.
+    column_name = str(issue["Column"]).strip()[:100]
+    location = (
+        f"original Excel row {original_excel_row}"
+        if original_excel_row is not None
+        else f"current working row {current_excel_row}"
+    )
+    if issue_type == "Missing value":
+        structural_details = (
+            f"A blank cell was detected in column {column_name!r} at {location}. "
+            "The value is missing; its correct replacement is unknown. "
+            "Suggest evidence-based verification steps. Never invent a value."
+        )
+    elif issue_type == "Exact duplicate row":
+        structural_details = (
+            f"The record at {location} belongs to an exact duplicate-row "
+            "group (all columns match another row). This does not establish "
+            "that either occurrence is safe to delete. Explain how to verify "
+            "whether the records represent one event or legitimate repeats."
+        )
+    elif issue_type == "Repeated identifier (review)":
+        structural_details = (
+            f"A repeated identifier was found in column {column_name!r} "
+            f"at {location}. The identifier value is not shared. "
+            "Multiple visits or transactions may legitimately share an ID."
+        )
+    else:
+        structural_details = (
+            f"The finding type is {issue_type!r}, in column "
+            f"{column_name!r} at {location}. No raw values are provided."
+        )
+
+    st.caption(
+        f"Context for AI: {issue_type} · Column: {column_name} · "
+        f"{location}. No uploaded row values or record IDs are sent."
+    )
+    safe_finding = {
+        "Issue": issue_type,
+        "What Vexa found": structural_details,
+        "Suggested check": (
+            str(issue["Suggested check"]) + " "
+            "Use the supplied column and Excel row in your answer. "
+            "Do not claim this metadata was not provided. "
+            "Do not invent missing values or recommend unverified deletion."
+        ),
+    }
     context=(S.single_revision,selected,question)
     if st.button("Analyze Finding with AI ✨",type="primary",key="single_ai_run"):
         if not confirmed:
