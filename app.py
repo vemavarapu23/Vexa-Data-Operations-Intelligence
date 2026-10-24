@@ -360,6 +360,16 @@ if "initialized" not in S:
     S.ai_response = None
     S.ai_context = None
 
+# Independent one-file workspace; does not alter two-report comparison state.
+if "single_original" not in S:
+    S.single_original = None
+    S.single_current = None
+    S.single_row_ids = []
+    S.single_name = ""
+    S.single_key = None
+    S.single_events = []
+    S.single_revision = 0
+
 
 # ============================================================
 # BASIC HELPERS
@@ -839,6 +849,244 @@ def filtered_preview(frame, key_col, search_text):
 
 
 # ============================================================
+# SINGLE-FILE QUALITY AUDIT HELPERS
+# ============================================================
+
+def single_missing_mask(frame):
+    # normalize() converts blanks/nulls to empty stripped strings.
+    return frame.eq("")
+
+
+def single_exact_groups(frame):
+    # keep=False returns all members of a repeated full-row group.
+    return frame.duplicated(keep=False)
+
+
+def single_quality_findings(frame, key_col=None):
+    findings = []
+    empty = single_missing_mask(frame)
+    for col in frame.columns:
+        row_numbers = frame.index[empty[col]].tolist()
+        for i in row_numbers:
+            findings.append({
+                "Issue": "Missing value",
+                "Excel Row (current)": int(i) + 2,
+                "Column": col,
+                "Detail": f"Blank value in column '{col}'",
+                "Suggested check": "Verify against the original source; do not invent values.",
+            })
+
+    duplicated = single_exact_groups(frame)
+    for i in frame.index[duplicated]:
+        findings.append({
+            "Issue": "Exact duplicate row",
+            "Excel Row (current)": int(i) + 2,
+            "Column": "All columns",
+            "Detail": "All cell values match another row in this file.",
+            "Suggested check": "Verify whether one of the repeated records is unnecessary.",
+        })
+
+    if key_col and key_col in frame.columns:
+        keys = frame[key_col].map(safe_text)
+        repeated = keys.ne("") & keys.duplicated(keep=False)
+        for i in frame.index[repeated]:
+            findings.append({
+                "Issue": "Repeated identifier (review)",
+                "Excel Row (current)": int(i) + 2,
+                "Column": key_col,
+                "Detail": f"Identifier '{keys.at[i]}' occurs {int(keys.eq(keys.at[i]).sum())} times.",
+                "Suggested check": "Repeated IDs may represent legitimate separate visits/events.",
+            })
+    return pd.DataFrame(findings, columns=[
+        "Issue", "Excel Row (current)", "Column", "Detail", "Suggested check"
+    ])
+
+
+def single_change_report():
+    if S.single_original is None:
+        return pd.DataFrame()
+    original = S.single_original
+    current = S.single_current
+    rows = {orig: i for i, orig in enumerate(S.single_row_ids)}
+    changes = []
+    for orig in range(len(original)):
+        if orig not in rows:
+            changes.append({
+                "Change": "Deleted row", "Original Excel Row": orig + 2,
+                "Column": "Entire row", "Original": str(original.iloc[orig].to_dict()),
+                "Current": "(Removed)",
+            })
+        else:
+            idx = rows[orig]
+            for col in original.columns:
+                old = safe_text(original.iloc[orig][col])
+                new = safe_text(current.iloc[idx][col])
+                if old != new:
+                    changes.append({
+                        "Change": "Verified value correction", "Original Excel Row": orig + 2,
+                        "Column": col, "Original": old, "Current": new,
+                    })
+    return pd.DataFrame(changes, columns=[
+        "Change", "Original Excel Row", "Column", "Original", "Current"
+    ])
+
+
+def load_single_file(frame, filename, key_col):
+    S.single_original = frame.copy(deep=True)
+    S.single_current = frame.copy(deep=True)
+    S.single_row_ids = list(range(len(frame)))
+    S.single_name = filename
+    S.single_key = key_col
+    S.single_events = []
+    S.single_revision += 1
+
+
+def render_single_file_audit():
+    st.title("Single File · Data Quality Audit")
+    st.write("Analyze one CSV/Excel file for missing values, identical rows and optional repeated identifiers. Preview the original and reviewed working copy before downloading.")
+    st.warning("Public demo: upload only fictional or non-sensitive files. Do not upload patient or SoleCare client information.")
+
+    upload = st.file_uploader("Upload one report (CSV or XLSX)", type=["csv", "xlsx"], key="single_upload")
+    if upload is not None:
+        try:
+            incoming = read_upload(upload)
+        except Exception as exc:
+            st.error(f"Unable to read report: {exc}")
+            incoming = None
+        if incoming is not None:
+            if incoming.empty:
+                st.error("The file must have at least one data row.")
+            else:
+                key_choice = st.selectbox("Optional identifier column", ["None — exact rows only"] + list(incoming.columns), key="single_key_choice", help="A repeated ID is not automatically a duplicate business event.")
+                key = None if key_choice == "None — exact rows only" else key_choice
+                st.caption(f"{len(incoming):,} rows · {len(incoming.columns)} columns · Max 8 MB / 25,000 rows")
+                if st.button("Run Single-File Audit", type="primary", key="single_scan"):
+                    load_single_file(incoming, upload.name, key)
+                    st.rerun()
+
+    if S.single_current is None:
+        st.info("Upload one file and click Run Single-File Audit, or try the fictional sample below.")
+        if st.button("Load fictional one-file sample", key="single_example"):
+            demo = pd.DataFrame([
+                {"Visit ID": "V001", "Site": "Opportunity Center", "Visits": "1"},
+                {"Visit ID": "V002", "Site": "Cedar Valley", "Visits": "2"},
+                {"Visit ID": "V002", "Site": "Cedar Valley", "Visits": "2"},
+                {"Visit ID": "V003", "Site": "", "Visits": "1"},
+                {"Visit ID": "V004", "Site": "Beacon of Hope", "Visits": ""},
+                {"Visit ID": "V002", "Site": "Cedar Valley", "Visits": "3"},
+            ])
+            load_single_file(normalize(demo), "fictional_site_visits.xlsx", "Visit ID")
+            st.rerun()
+        return
+
+    current = S.single_current
+    missing = single_missing_mask(current)
+    exact = single_exact_groups(current)
+    findings = single_quality_findings(current, S.single_key)
+    changes = single_change_report()
+
+    st.caption(f"Current workspace: {S.single_name} · Key: {S.single_key or 'None'}")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Working rows", len(current))
+    k2.metric("Missing cells", int(missing.sum().sum()))
+    k3.metric("Rows in exact-duplicate groups", int(exact.sum()))
+    k4.metric("Reviewed changes", len(changes))
+    st.caption("Duplicate metric counts all rows in repeated groups, not the number of rows safe to delete. Blank cells and repeated IDs are not automatically errors.")
+
+    view = st.radio("Preview", ["Quality Findings", "Original Data", "Cleaned Working Preview", "Changes Made"], horizontal=True, key="single_preview")
+    if view == "Quality Findings":
+        if findings.empty:
+            st.success("No issues found with the currently enabled checks.")
+        else:
+            st.dataframe(findings, hide_index=True, use_container_width=True)
+            st.subheader("Findings by issue")
+            st.bar_chart(findings["Issue"].value_counts(), color="#bc4074")
+    elif view == "Original Data":
+        st.caption("Snapshot of the original file. Never changed by Vexa.")
+        original_preview = S.single_original.copy()
+        original_preview.insert(0, "Original Excel Row", list(range(2, len(original_preview)+2)))
+        st.dataframe(original_preview, hide_index=True, use_container_width=True)
+    elif view == "Cleaned Working Preview":
+        st.caption("Preview of the working copy. Only explicitly approved changes are applied.")
+        working_preview = current.copy()
+        working_preview.insert(0, "Original Excel Row", [x + 2 for x in S.single_row_ids])
+        st.dataframe(working_preview, hide_index=True, use_container_width=True)
+    else:
+        if changes.empty:
+            st.info("No changes applied yet. Original and working data are identical.")
+        else:
+            st.dataframe(changes, hide_index=True, use_container_width=True)
+
+    st.divider()
+    st.subheader("Review and approve a correction")
+    st.caption("Changes affect only the working copy. Vexa never automatically deletes a row or fills a missing value.")
+    action = st.radio("Action", ["Remove verified exact duplicate", "Fill verified missing value"], horizontal=True, key="single_action")
+    reviewer = st.text_input("Reviewer", value="Analyst", key="single_reviewer")
+    reason = st.text_area("Evidence / reason for this change", key="single_reason", placeholder="Example: Compared with the signed original source report.")
+
+    if action == "Remove verified exact duplicate":
+        candidates = current.index[exact].tolist()
+        if not candidates:
+            st.info("No exact duplicate rows remain.")
+        else:
+            selected = st.selectbox("Choose row to remove", candidates, format_func=lambda i: f"Original Excel row {S.single_row_ids[i]+2} (working row {i+2})", key="single_delete_row")
+            st.dataframe(current.iloc[[selected]], hide_index=True, use_container_width=True)
+            st.caption("Check the source records carefully. Identical visit rows could still be genuine separate events.")
+            approved = st.checkbox("I verified this row is unnecessary and approve deleting it from the working copy", key="single_approve_delete")
+            if st.button("Remove Selected Row", type="primary", key="single_remove"):
+                if not reviewer.strip() or not reason.strip() or not approved:
+                    st.error("Reviewer, supporting evidence and approval are required.")
+                elif not bool(single_exact_groups(S.single_current).iloc[selected]):
+                    st.error("This row is no longer part of an exact duplicate group.")
+                else:
+                    original_id = S.single_row_ids[selected]
+                    updated = S.single_current.drop(index=selected).reset_index(drop=True)
+                    S.single_current = updated
+                    S.single_row_ids.pop(selected)
+                    S.single_events.append({"When": timestamp(), "Reviewer": reviewer.strip(), "Action": "Deleted verified duplicate", "Original Excel Row": original_id + 2, "Evidence": reason.strip()})
+                    S.single_revision += 1
+                    st.rerun()
+    else:
+        candidates = [(int(i), col) for col in current.columns for i in current.index[missing[col]]]
+        if not candidates:
+            st.info("No missing values remain.")
+        else:
+            selected = st.selectbox("Choose a blank cell", candidates, format_func=lambda item: f"Original Excel row {S.single_row_ids[item[0]]+2} · {item[1]}", key="single_blank_choice")
+            replacement = st.text_input("Verified replacement value", key="single_verified_value")
+            st.dataframe(current.iloc[[selected[0]]], hide_index=True, use_container_width=True)
+            approved = st.checkbox("I verified the replacement from a trusted source and approve this correction", key="single_approve_fill")
+            if st.button("Apply Verified Value", type="primary", key="single_fill"):
+                i, col = selected
+                if not reviewer.strip() or not reason.strip() or not replacement.strip() or not approved:
+                    st.error("Enter verified value, reviewer, supporting evidence and approval.")
+                elif safe_text(S.single_current.at[i, col]):
+                    st.error("The selected cell is no longer blank.")
+                else:
+                    S.single_current.at[i, col] = replacement.strip()
+                    S.single_events.append({"When": timestamp(), "Reviewer": reviewer.strip(), "Action": f"Filled missing {col}", "Original Excel Row": S.single_row_ids[i]+2, "Evidence": reason.strip()})
+                    S.single_revision += 1
+                    st.rerun()
+
+    st.divider()
+    st.subheader("Preview and export")
+    st.caption("Use Cleaned Working Preview above to inspect the exact contents before download. The 'cleaned' file includes only changes you have explicitly approved.")
+    if changes.empty:
+        st.info("No approved corrections yet; downloaded working data matches the original.")
+    left, right = st.columns(2)
+    with left:
+        st.download_button("Download working data — CSV", csv_bytes(current), file_name="vexa_single_reviewed.csv", mime="text/csv", key="single_work_csv", use_container_width=True)
+        st.download_button("Download working data — Excel", xlsx_bytes(current), file_name="vexa_single_reviewed.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="single_work_xlsx", use_container_width=True)
+    with right:
+        st.download_button("Download quality findings — CSV", csv_bytes(findings), file_name="vexa_single_quality_findings.csv", mime="text/csv", key="single_findings_export", use_container_width=True)
+        st.download_button("Download changes made — CSV", csv_bytes(changes), file_name="vexa_single_changes.csv", mime="text/csv", key="single_changes_export", use_container_width=True)
+    if S.single_events:
+        st.subheader("Single-file review actions (this session)")
+        st.dataframe(pd.DataFrame(S.single_events), hide_index=True, use_container_width=True)
+        st.download_button("Download single-file review log", csv_bytes(pd.DataFrame(S.single_events)), file_name="vexa_single_review_log.csv", mime="text/csv", key="single_log_export")
+    st.caption("Single-file audit decisions are session-only in this version, even outside public demo mode. This is not an enterprise audit log or HIPAA-compliant environment.")
+
+
+# ============================================================
 # SIDEBAR
 # ============================================================
 
@@ -861,6 +1109,7 @@ with st.sidebar:
     pages = [
         "Dashboard",
         "Upload & Compare",
+        "Single File Audit",
         "Investigations",
         "AI Assistant",
         "Review History",
@@ -902,12 +1151,15 @@ st.markdown(
 # PAGE 1 — DASHBOARD
 # ============================================================
 
-if S.page == "Dashboard":
+if S.page == "Single File Audit":
+    render_single_file_audit()
+
+elif S.page == "Dashboard":
     st.title("Data Quality Overview")
 
     if S.a is None:
         st.info(
-            "Welcome to Vexa. Upload two reports "
+            "Welcome to Vexa. Audit one file or compare two reports "
             "to begin your data quality analysis."
         )
 
