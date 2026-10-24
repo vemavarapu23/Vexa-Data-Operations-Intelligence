@@ -1,0 +1,10 @@
+
+# Keep API keys private
+.streamlit/secrets.toml
+.env
+
+# Keep local database private
+vexa.db
+
+# Python temporary files
+__pycache__/
