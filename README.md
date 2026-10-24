@@ -1,26 +1,43 @@
-# Vexa — MVP 1: Healthcare operations CSV quality checker
+# Vexa — Data Operations Intelligence
 
-A runnable Streamlit app for **synthetic, non-patient** service records. It identifies missing data, invalid dates, duplicate request IDs, unrecognized statuses, and illustrative overdue follow-ups. Python/pandas cleans and checks records; SQLite executes a real SQL status summary.
+**AI-Powered Data Reconciliation, Investigation & Audit Platform**
 
-## Run locally
+Vexa is an interactive data operations platform built with Python, Streamlit, SQLite, and Groq LLM. It helps analysts compare reports, identify data quality issues, investigate discrepancies, document decisions, and apply verified corrections.
 
-1. Install Python 3.10+.
-2. Open a terminal in this folder.
-3. Run `pip install -r requirements.txt`.
-4. Run `streamlit run app.py`.
-5. Download the sample CSV from the app, or upload `sample_requests.csv` to test.
+## Key Features
 
-## Expected CSV columns
-`request_id, service_type, status, assigned_team, last_updated`
+- **Data Reconciliation:** Compare CSV and Excel reports using matching record identifiers.
+- **Data Quality Detection:** Identify missing records, duplicate identifiers, and mismatched values.
+- **Investigation Workflow:** Record reviewer decisions, verification notes, and supporting evidence.
+- **AI Investigation Assistant:** Use Groq LLM to explore potential causes, business impacts, and recommended validation steps.
+- **Human-Approved Corrections:** Apply verified value corrections and duplicate-row deletions to working copies.
+- **Audit History:** SQLite-backed audit history for local use and isolated session history for the public demo.
+- **Data Export:** Download original reports, corrected reports, difference reports, change logs, and review history.
 
-`last_updated` should be an ISO date, e.g. `2026-10-20`. Recognized statuses: `Open`, `In Progress`, `Closed`. For the demo, open work untouched for **more than seven days** is flagged for review; this is only an illustrative business rule.
+## Technology Stack
 
-## What is real vs simulated?
+Python · Streamlit · Pandas · SQLite · Groq LLM · OpenPyXL · GitHub
 
-- **Working:** CSV upload, pandas checks, SQLite SQL aggregation, flags, filters, downloads.
-- **Not implemented yet:** AI explanations, approval workflow, persistent audit trail, integrations.
-- **Synthetic data only:** no client/patient data and no claims about any named company’s actual operations.
-- Date-sensitive flags are calculated relative to the day the app runs.
+## Data Privacy
 
-## First business question
-Which operational records need manual review, and which types of issues appear most often?
+Vexa is designed for demonstration using fictional, non-sensitive information. Do not upload real patient records or confidential organizational data.
+
+The public demo uses session-based audit history, while the local version supports persistent SQLite audit records.
+
+## Getting Started
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Configure your Groq API key privately in Streamlit secrets, then launch:
+
+```bash
+streamlit run app.py
+```
+
+## Project Purpose
+
+Vexa demonstrates practical skills in data analytics, data quality management, workflow automation, AI-assisted investigation, and human-in-the-loop decision support.
