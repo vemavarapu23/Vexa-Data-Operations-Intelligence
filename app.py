@@ -356,9 +356,10 @@ if "initialized" not in S:
     S.deletions = 0
     S.load_number = 0
     S.audit_counter = 0
-    S.page = "Dashboard"
+    S.page = "Upload & Analyze"
     S.ai_response = None
     S.ai_context = None
+    S.active_mode = "Single File"
 
 # Independent one-file workspace; does not alter two-report comparison state.
 if "single_original" not in S:
@@ -370,6 +371,9 @@ if "single_original" not in S:
     S.single_events = []
     S.single_revision = 0
 
+
+if "active_mode" not in S:
+    S.active_mode = "Single File" if S.single_current is not None else "Two Files"
 
 # ============================================================
 # BASIC HELPERS
@@ -771,7 +775,8 @@ def load_reports(a, b, na, nb, ka, kb, company):
     S.load_number += 1
 
     refresh()
-    S.page = "Dashboard"
+    S.active_mode = "Two Files"
+    S.page = "Upload & Analyze"
 
 
 # ============================================================
@@ -939,6 +944,7 @@ def load_single_file(frame, filename, key_col):
     S.single_key = key_col
     S.single_events = []
     S.single_revision += 1
+    S.active_mode = "Single File"
 
 
 def render_single_file_audit():
@@ -1018,6 +1024,31 @@ def render_single_file_audit():
             st.dataframe(changes, hide_index=True, use_container_width=True)
 
     st.divider()
+    st.subheader("Live cleaned data preview")
+    st.caption("Current working copy updates after each approved change. No download needed to inspect it.")
+    live = S.single_current.copy()
+    live.insert(0, "Original Excel Row", [rid + 2 for rid in S.single_row_ids])
+    st.dataframe(live, hide_index=True, use_container_width=True)
+    if st.button("Review and clean findings →", type="primary", key="single_go_review"):
+        S.page = "Investigations"
+        st.rerun()
+
+
+def render_single_investigations():
+    st.title("Investigation & Cleaning · Single File")
+    if S.single_current is None:
+        st.info("Choose Single File in Upload & Analyze and run an audit first.")
+        return
+    current = S.single_current
+    missing = single_missing_mask(current)
+    exact = single_exact_groups(current)
+    findings = single_quality_findings(current, S.single_key)
+    st.caption(f"Working on {S.single_name} · {len(current)} rows · {len(findings)} quality findings")
+    if not findings.empty:
+        st.dataframe(findings, hide_index=True, use_container_width=True)
+    else:
+        st.success("No issues remain with the enabled checks.")
+    st.divider()
     st.subheader("Review and approve a correction")
     st.caption("Changes affect only the working copy. Vexa never automatically deletes a row or fills a missing value.")
     action = st.radio("Action", ["Remove verified exact duplicate", "Fill verified missing value"], horizontal=True, key="single_action")
@@ -1067,23 +1098,98 @@ def render_single_file_audit():
                     S.single_revision += 1
                     st.rerun()
 
+
     st.divider()
-    st.subheader("Preview and export")
-    st.caption("Use Cleaned Working Preview above to inspect the exact contents before download. The 'cleaned' file includes only changes you have explicitly approved.")
-    if changes.empty:
-        st.info("No approved corrections yet; downloaded working data matches the original.")
-    left, right = st.columns(2)
+    st.subheader("Live cleaned working preview")
+    after = S.single_current.copy()
+    after.insert(0, "Original Excel Row", [rid+2 for rid in S.single_row_ids])
+    st.dataframe(after, hide_index=True, use_container_width=True)
+    st.caption("The original file stays unchanged. Review all changes on the Export Results page.")
+    if st.button("Open Export Results →", key="single_review_to_export"):
+        S.page = "Export Results"
+        st.rerun()
+
+
+def render_single_export():
+    st.title("Export Results · Single File")
+    if S.single_current is None:
+        st.info("Run a single-file audit first.")
+        return
+    changes = single_change_report()
+    original = S.single_original
+    current = S.single_current
+    a,b,c = st.columns(3)
+    a.metric("Original rows",len(original))
+    b.metric("Cleaned rows",len(current))
+    c.metric("Reviewed changes",len(changes))
+    st.caption(f"Workspace: {S.single_name}")
+    selection = st.radio("Data preview",["Cleaned Working Preview","Original Data","Changes Made","Remaining Findings"],horizontal=True,key="single_export_preview")
+    if selection == "Original Data":
+        preview = original.copy()
+        preview.insert(0,"Original Excel Row", list(range(2,len(preview)+2)))
+    elif selection == "Changes Made":
+        preview = changes
+    elif selection == "Remaining Findings":
+        preview = single_quality_findings(current,S.single_key)
+    else:
+        preview = current.copy()
+        preview.insert(0,"Original Excel Row",[rid+2 for rid in S.single_row_ids])
+    if preview.empty:
+        st.info("No rows in this view.")
+    else:
+        st.dataframe(preview,hide_index=True,use_container_width=True)
+    st.divider()
+    st.subheader("Download when ready")
+    left,right=st.columns(2)
     with left:
-        st.download_button("Download working data — CSV", csv_bytes(current), file_name="vexa_single_reviewed.csv", mime="text/csv", key="single_work_csv", use_container_width=True)
-        st.download_button("Download working data — Excel", xlsx_bytes(current), file_name="vexa_single_reviewed.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="single_work_xlsx", use_container_width=True)
+        st.download_button("Cleaned Excel",xlsx_bytes(current),file_name="vexa_single_cleaned.xlsx",mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
+        st.download_button("Cleaned CSV",csv_bytes(current),file_name="vexa_single_cleaned.csv",mime="text/csv",use_container_width=True)
     with right:
-        st.download_button("Download quality findings — CSV", csv_bytes(findings), file_name="vexa_single_quality_findings.csv", mime="text/csv", key="single_findings_export", use_container_width=True)
-        st.download_button("Download changes made — CSV", csv_bytes(changes), file_name="vexa_single_changes.csv", mime="text/csv", key="single_changes_export", use_container_width=True)
+        st.download_button("Quality findings CSV",csv_bytes(single_quality_findings(current,S.single_key)),file_name="vexa_quality_findings.csv",mime="text/csv",use_container_width=True)
+        st.download_button("Changes made CSV",csv_bytes(changes),file_name="vexa_single_changes.csv",mime="text/csv",use_container_width=True)
     if S.single_events:
-        st.subheader("Single-file review actions (this session)")
-        st.dataframe(pd.DataFrame(S.single_events), hide_index=True, use_container_width=True)
-        st.download_button("Download single-file review log", csv_bytes(pd.DataFrame(S.single_events)), file_name="vexa_single_review_log.csv", mime="text/csv", key="single_log_export")
-    st.caption("Single-file audit decisions are session-only in this version, even outside public demo mode. This is not an enterprise audit log or HIPAA-compliant environment.")
+        st.download_button("Review log CSV",csv_bytes(pd.DataFrame(S.single_events)),file_name="vexa_single_review_log.csv",mime="text/csv")
+    st.caption("Working copy and single-file review log are session-only; this is not an enterprise or HIPAA-compliant workspace.")
+
+
+def render_single_ai():
+    st.title("AI Investigation Assistant · Single File")
+    st.caption("AI provides investigation guidance only. It does not edit data.")
+    if S.single_current is None:
+        st.info("Run a single-file audit first.")
+        return
+    findings = single_quality_findings(S.single_current,S.single_key)
+    if findings.empty:
+        st.success("No current quality issues to investigate.")
+        return
+    options = list(range(len(findings)))
+    selected = st.selectbox("Choose a quality finding",options,format_func=lambda i: f"{findings.iloc[i]['Issue']} · Excel row {findings.iloc[i]['Excel Row (current)']} · {findings.iloc[i]['Column']}",key="single_ai_selected")
+    issue=findings.iloc[selected]
+    st.write(f"**Finding:** {issue['Detail']}")
+    st.write(f"**Suggested check:** {issue['Suggested check']}")
+    question=st.text_area("Optional investigation question",max_chars=500,key="single_ai_question")
+    confirmed=st.checkbox("I confirm the finding and question contain only fictional, non-sensitive information suitable for an external AI service.",key="single_ai_confirm")
+    # Do not transmit actual uploaded cell values or identifiers to the model.
+    safe_finding={"Issue":str(issue['Issue']),"What Vexa found":"An issue of this type was detected in an uploaded file. No column names or row contents are provided.","Suggested check":str(issue['Suggested check'])}
+    context=(S.single_revision,selected,question)
+    if st.button("Analyze Finding with AI ✨",type="primary",key="single_ai_run"):
+        if not confirmed:
+            st.warning("Confirm that this is non-sensitive test information first.")
+        elif not get_setting("GROQ_API_KEY",""):
+            st.error("Groq API key not configured.")
+        else:
+            try:
+                with st.spinner("Vexa AI is analyzing..."):
+                    # Same function as two-file mode, but sanitized single-file issue.
+                    response=analyze_finding(api_key=get_setting("GROQ_API_KEY",""),finding=safe_finding,question=question)
+                S.single_ai_response=response
+                S.single_ai_context=context
+            except Exception as exc:
+                st.error(f"AI request failed ({type(exc).__name__}).")
+    if S.get("single_ai_response") and S.get("single_ai_context")==context:
+        st.markdown(S.single_ai_response)
+        st.warning("Verify AI suggestions against source records. No corrections are applied automatically.")
+
 
 
 # ============================================================
@@ -1107,9 +1213,7 @@ with st.sidebar:
     )
 
     pages = [
-        "Dashboard",
-        "Upload & Compare",
-        "Single File Audit",
+        "Upload & Analyze",
         "Investigations",
         "AI Assistant",
         "Review History",
@@ -1151,915 +1255,833 @@ st.markdown(
 # PAGE 1 — DASHBOARD
 # ============================================================
 
-if S.page == "Single File Audit":
-    render_single_file_audit()
-
-elif S.page == "Dashboard":
-    st.title("Data Quality Overview")
-
-    if S.a is None:
-        st.info(
-            "Welcome to Vexa. Audit one file or compare two reports "
-            "to begin your data quality analysis."
-        )
-
-        st.write(
-            "Vexa compares records, identifies differences, "
-            "supports investigations, and allows "
-            "employee-approved corrections."
-        )
-
-        if st.button("Upload Your Reports", type="primary"):
-            S.page = "Upload & Compare"
-            st.rerun()
-
+if S.page == "Upload & Analyze":
+    st.title("Upload & Analyze")
+    mode = st.radio("Analysis type",["Single File","Two Files"],index=0 if S.active_mode=="Single File" else 1,horizontal=True,key="analysis_mode_selector")
+    if mode != S.active_mode:
+        S.active_mode=mode
+        st.rerun()
+    if mode == "Single File":
+        render_single_file_audit()
     else:
-        f = S.findings
-
-        st.caption(f"{S.company} · {S.na} vs {S.nb}")
-
-        c1, c2, c3, c4, c5 = st.columns(5)
-
-        c1.metric("Rows in Report A", len(S.a))
-        c2.metric("Rows in Report B", len(S.b))
-        c3.metric("Current differences", len(f))
-        c4.metric("Reviews saved", len(S.reviews))
-        c5.metric(
-            "Corrections applied",
-            sum(
-                item["Action"] == "Correction applied"
-                for item in S.history
-            ),
-        )
-
-        st.caption(
-            "Current differences come from the latest comparison. "
-            "Corrections applied counts approved value changes "
-            "in this session."
-        )
-
-        if S.deletions:
-            st.caption(
-                f"Verified duplicate rows removed: {S.deletions}"
-            )
-
-        left, right = st.columns([1.5, 1])
-
-        with left:
-            st.subheader("Differences by Category")
-
-            if not f.empty:
-                st.bar_chart(
-                    f["Issue"].value_counts(),
-                    color="#bc4074",
-                    height=320,
-                )
+        if S.a is not None and S.b is not None:
+            st.subheader("Current comparison overview")
+            st.caption(f"{S.company} · {S.na} vs {S.nb}")
+            p1,p2,p3,p4=st.columns(4)
+            p1.metric("Report A rows",len(S.a))
+            p2.metric("Report B rows",len(S.b))
+            p3.metric("Current findings",len(S.findings))
+            p4.metric("Verified deletions",S.deletions)
+            if not S.findings.empty:
+                st.bar_chart(S.findings["Issue"].value_counts(),color="#bc4074")
+                st.dataframe(public_view(S.findings),hide_index=True,use_container_width=True)
             else:
-                st.success(
-                    "No differences found with these comparison rules."
+                st.success("No current differences found with the enabled comparison checks.")
+            st.divider()
+        st.write(
+            "Upload two CSV or Excel files. "
+            "Choose the matching identifier column in both files."
+        )
+
+        if PUBLIC_DEMO:
+            st.warning(
+                "Public demo: use only fictional, non-sensitive reports."
+            )
+
+        company = st.text_input(
+            "Company or workspace name",
+            value=S.company,
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            na = st.text_input(
+                "First report name",
+                value=S.na,
+            )
+
+            ua = st.file_uploader(
+                "First report",
+                type=["csv", "xlsx"],
+                key="upload_a",
+            )
+
+        with col2:
+            nb = st.text_input(
+                "Second report name",
+                value=S.nb,
+            )
+
+            ub = st.file_uploader(
+                "Second report",
+                type=["csv", "xlsx"],
+                key="upload_b",
+            )
+
+        if ua is not None and ub is not None:
+            try:
+                aa = read_upload(ua)
+                bb = read_upload(ub)
+
+                if aa.empty or bb.empty:
+                    st.error(
+                        "Both reports need at least one data row."
+                    )
+
+                else:
+                    key1, key2 = st.columns(2)
+
+                    with key1:
+                        ka = st.selectbox(
+                            "Matching column in first report",
+                            list(aa.columns),
+                        )
+
+                    with key2:
+                        kb = st.selectbox(
+                            "Matching column in second report",
+                            list(bb.columns),
+                        )
+
+                    st.caption(
+                        f"{len(aa)} first-report rows · "
+                        f"{len(bb)} second-report rows"
+                    )
+
+                    if st.button(
+                        "Compare Reports",
+                        type="primary",
+                    ):
+                        if not na.strip() or not nb.strip():
+                            st.error(
+                                "Give each report a name."
+                            )
+                        elif na.strip() == nb.strip():
+                            st.error(
+                                "Report names must be different."
+                            )
+                        else:
+                            load_reports(
+                                aa,
+                                bb,
+                                na.strip(),
+                                nb.strip(),
+                                ka,
+                                kb,
+                                company.strip() or "My Workspace",
+                            )
+                            st.rerun()
+
+            except Exception as ex:
+                st.error(f"Cannot read file: {ex}")
+
+        st.divider()
+
+        with st.expander("Optional: fictional sample data"):
+            st.caption(
+                "Sample reports are loaded only "
+                "when you click the button."
+            )
+
+            if st.button("Load fictional sample reports"):
+                aa, bb = sample_files()
+
+                load_reports(
+                    aa,
+                    bb,
+                    "Report A",
+                    "Report B",
+                    "ID",
+                    "ID",
+                    "Example Company",
                 )
-
-        with right:
-            st.subheader("Review Activity")
-
-            st.metric(
-                "Findings reviewed this comparison",
-                len(S.reviews),
-            )
-
-            st.progress(
-                min(len(S.reviews) / max(len(f), 1), 1.0)
-            )
-
-            st.write(
-                "A reviewed finding is not necessarily resolved."
-            )
-
-            if st.button(
-                "Open Investigations",
-                type="primary",
-            ):
-                S.page = "Investigations"
                 st.rerun()
 
-        st.subheader("Recent Findings")
-
-        if not f.empty:
-            st.dataframe(
-                public_view(f).head(10),
-                hide_index=True,
-                use_container_width=True,
-            )
-
-
-# ============================================================
-# PAGE 2 — UPLOAD & COMPARE
-# ============================================================
-
-elif S.page == "Upload & Compare":
-    st.title("Upload & Compare")
-
-    st.write(
-        "Upload two CSV or Excel files. "
-        "Choose the matching identifier column in both files."
-    )
-
-    if PUBLIC_DEMO:
-        st.warning(
-            "Public demo: use only fictional, non-sensitive reports."
+        st.info(
+            "Reports may have different purposes. "
+            "Missing records or mismatched values "
+            "are not automatically errors."
         )
-
-    company = st.text_input(
-        "Company or workspace name",
-        value=S.company,
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        na = st.text_input(
-            "First report name",
-            value=S.na,
-        )
-
-        ua = st.file_uploader(
-            "First report",
-            type=["csv", "xlsx"],
-            key="upload_a",
-        )
-
-    with col2:
-        nb = st.text_input(
-            "Second report name",
-            value=S.nb,
-        )
-
-        ub = st.file_uploader(
-            "Second report",
-            type=["csv", "xlsx"],
-            key="upload_b",
-        )
-
-    if ua is not None and ub is not None:
-        try:
-            aa = read_upload(ua)
-            bb = read_upload(ub)
-
-            if aa.empty or bb.empty:
-                st.error(
-                    "Both reports need at least one data row."
-                )
-
-            else:
-                key1, key2 = st.columns(2)
-
-                with key1:
-                    ka = st.selectbox(
-                        "Matching column in first report",
-                        list(aa.columns),
-                    )
-
-                with key2:
-                    kb = st.selectbox(
-                        "Matching column in second report",
-                        list(bb.columns),
-                    )
-
-                st.caption(
-                    f"{len(aa)} first-report rows · "
-                    f"{len(bb)} second-report rows"
-                )
-
-                if st.button(
-                    "Compare Reports",
-                    type="primary",
-                ):
-                    if not na.strip() or not nb.strip():
-                        st.error(
-                            "Give each report a name."
-                        )
-                    elif na.strip() == nb.strip():
-                        st.error(
-                            "Report names must be different."
-                        )
-                    else:
-                        load_reports(
-                            aa,
-                            bb,
-                            na.strip(),
-                            nb.strip(),
-                            ka,
-                            kb,
-                            company.strip() or "My Workspace",
-                        )
-                        st.rerun()
-
-        except Exception as ex:
-            st.error(f"Cannot read file: {ex}")
-
-    st.divider()
-
-    with st.expander("Optional: fictional sample data"):
-        st.caption(
-            "Sample reports are loaded only "
-            "when you click the button."
-        )
-
-        if st.button("Load fictional sample reports"):
-            aa, bb = sample_files()
-
-            load_reports(
-                aa,
-                bb,
-                "Report A",
-                "Report B",
-                "ID",
-                "ID",
-                "Example Company",
-            )
-            st.rerun()
-
-    st.info(
-        "Reports may have different purposes. "
-        "Missing records or mismatched values "
-        "are not automatically errors."
-    )
-
 
 # ============================================================
 # PAGE 3 — INVESTIGATIONS
 # ============================================================
 
 elif S.page == "Investigations":
-    st.title("Investigations")
-
-    st.caption(
-        "Inspect evidence, save your decision, "
-        "and apply only verified changes."
-    )
-
-    if S.a is None:
-        st.info("Upload and compare two reports first.")
-
-    elif S.findings.empty:
-        st.success("No differences to investigate.")
-
+    if S.active_mode == "Single File":
+        render_single_investigations()
     else:
-        f = S.findings
+        st.title("Investigations")
 
-        categories = [
-            "All"
-        ] + sorted(f["Issue"].unique().tolist())
-
-        category = st.selectbox(
-            "Filter findings",
-            categories,
+        st.caption(
+            "Inspect evidence, save your decision, "
+            "and apply only verified changes."
         )
 
-        filtered = (
-            f if category == "All"
-            else f[f["Issue"] == category]
-        )
-
-        st.dataframe(
-            public_view(filtered)[
-                ["Finding ID", "Record", "Issue"]
-            ],
-            hide_index=True,
-            use_container_width=True,
-        )
-
-        chosen = st.selectbox(
-            "Select finding",
-            filtered["Finding ID"].tolist(),
-        )
-
-        issue = f[
-            f["Finding ID"] == chosen
-        ].iloc[0]
-
-        record = issue["Record"]
-        suffix = f"{S.load_number}_{chosen}"
-
-        with st.container(border=True):
-            st.subheader(
-                f"{record} · {issue['Issue']}"
-            )
-
-            st.write("**What Vexa found**")
-            st.write(issue["What Vexa found"])
-
-            st.write("**What to investigate**")
-            st.write(issue["Suggested check"])
-
-            previous = S.reviews.get(chosen, {})
-
-            reviewer = st.text_input(
-                "Reviewed by",
-                value=previous.get("Reviewer", "Analyst"),
-                key="reviewer_" + suffix,
-            )
-
-            decisions = [
-                "Needs follow-up",
-                "Confirmed issue",
-                "Expected difference",
-                "Resolved",
-            ]
-
-            decision = st.selectbox(
-                "Decision",
-                decisions,
-                index=(
-                    decisions.index(previous["Decision"])
-                    if previous.get("Decision") in decisions
-                    else 0
-                ),
-                key="decision_" + suffix,
-            )
-
-            notes = st.text_area(
-                "What did you verify?",
-                value=previous.get("Notes", ""),
-                key="notes_" + suffix,
-            )
-
-            if st.button(
-                "Save Review",
-                type="primary",
-                key="save_" + suffix,
-            ):
-                if not reviewer.strip():
-                    st.error("Enter the reviewer name.")
-
-                else:
-                    try:
-                        log_history(
-                            "Review saved",
-                            chosen,
-                            record,
-                            reviewer.strip(),
-                            f"{decision}: {notes}",
-                        )
-
-                    except sqlite3.Error as ex:
-                        st.error(
-                            f"Unable to save review: {ex}"
-                        )
-
-                    else:
-                        S.reviews[chosen] = {
-                            "Reviewer": reviewer.strip(),
-                            "Decision": decision,
-                            "Notes": notes,
-                            "Reviewed at": timestamp(),
-                        }
-
-                        if PUBLIC_DEMO:
-                            st.success(
-                                "Review saved for this demo session."
-                            )
-                        else:
-                            st.success(
-                                "Review saved permanently in SQLite."
-                            )
-
-        # ----------------------------------------------------
-        # VERIFIED VALUE CORRECTION
-        # ----------------------------------------------------
-
-        if issue["_kind"] == "value":
-            with st.container(border=True):
-                st.subheader(
-                    "Apply a verified correction"
-                )
-
-                st.write(
-                    "Changes are applied to a working copy. "
-                    "Original uploads remain unchanged."
-                )
-
-                target = st.radio(
-                    "Which report contains the wrong value?",
-                    [S.na, S.nb],
-                    horizontal=True,
-                    key="target_" + suffix,
-                )
-
-                if target == S.na:
-                    frame = S.a
-                    idx = int(issue["_ia"])
-                    original = issue["_va"]
-                else:
-                    frame = S.b
-                    idx = int(issue["_ib"])
-                    original = issue["_vb"]
-
-                column = issue["_column"]
-
-                st.write(f"**Column:** {column}")
-                st.write(f"**Current value:** `{original}`")
-
-                verified = st.text_input(
-                    "Correct value (verified by employee)",
-                    key="value_" + suffix,
-                )
-
-                proof = st.text_area(
-                    "How did you verify this value?",
-                    placeholder=(
-                        "Example: Checked the approved source report."
-                    ),
-                    key="proof_" + suffix,
-                )
-
-                confirm = st.checkbox(
-                    "I verified this correction and approve "
-                    "applying it to a copy.",
-                    key="confirm_" + suffix,
-                )
-
-                if st.button(
-                    "Apply Approved Correction",
-                    type="primary",
-                    key="apply_" + suffix,
-                ):
-                    if (
-                        not reviewer.strip()
-                        or not verified.strip()
-                        or not proof.strip()
-                        or not confirm
-                    ):
-                        st.error(
-                            "Enter reviewer, correct value, "
-                            "evidence, and approval."
-                        )
-
-                    elif idx not in frame.index:
-                        st.error(
-                            "Selected row no longer exists."
-                        )
-
-                    elif safe_text(frame.at[idx, column]) != original:
-                        st.error(
-                            "The value has changed. "
-                            "Compare again before correcting."
-                        )
-
-                    elif verified.strip() == original:
-                        st.warning(
-                            "New value matches current value."
-                        )
-
-                    else:
-                        detail = (
-                            f"{target}, {column}: "
-                            f"{original!r} → "
-                            f"{verified.strip()!r}. "
-                            f"Evidence: {proof}"
-                        )
-
-                        try:
-                            log_history(
-                                "Correction applied",
-                                chosen,
-                                record,
-                                reviewer.strip(),
-                                detail,
-                            )
-
-                        except sqlite3.Error as ex:
-                            st.error(
-                                "Audit save failed; "
-                                f"correction not applied: {ex}"
-                            )
-
-                        else:
-                            frame.at[
-                                idx, column
-                            ] = verified.strip()
-
-                            refresh()
-                            st.rerun()
-
-        # ----------------------------------------------------
-        # VERIFIED DUPLICATE DELETION
-        # ----------------------------------------------------
-
-        elif issue["_kind"] == "duplicate":
-            st.info(
-                "Possible duplicates must be verified "
-                "before deleting any row."
-            )
-
-            with st.container(border=True):
-                st.subheader(
-                    "Verified Duplicate Row Deletion"
-                )
-
-                side = issue["_target"]
-
-                if side == "A":
-                    frame = S.a
-                    key_col = S.ka
-                    report_name = S.na
-                    row_ids = S.row_ids_a
-                else:
-                    frame = S.b
-                    key_col = S.kb
-                    report_name = S.nb
-                    row_ids = S.row_ids_b
-
-                candidates = frame[
-                    frame[key_col].map(safe_text) == record
-                ]
-
-                st.write(
-                    f"**Duplicate rows in {report_name}**"
-                )
-
-                preview = candidates.copy()
-
-                preview.insert(
-                    0,
-                    "Original Excel Row",
-                    [
-                        row_ids[int(i)] + 2
-                        for i in candidates.index
-                    ],
-                )
-
-                st.dataframe(
-                    preview,
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-                st.caption(
-                    "Select the exact row verified "
-                    "as unnecessary."
-                )
-
-                selected_row = st.selectbox(
-                    "Exact duplicate row to remove",
-                    candidates.index.tolist(),
-                    format_func=lambda i: (
-                        "Original Excel row "
-                        f"{row_ids[int(i)] + 2}"
-                    ),
-                    key="delete_row_" + suffix,
-                )
-
-                st.write("**Selected row preview**")
-
-                st.dataframe(
-                    frame.loc[[selected_row]],
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-                deletion_reason = st.text_area(
-                    "Why is this exact row safe to delete?",
-                    placeholder=(
-                        "Example: Verified against source records; "
-                        "accidental duplicate."
-                    ),
-                    key="delete_reason_" + suffix,
-                )
-
-                deletion_approved = st.checkbox(
-                    "I verified this exact duplicate and "
-                    "approve removing it from the "
-                    "corrected working copy.",
-                    key="delete_approval_" + suffix,
-                )
-
-                if st.button(
-                    "Delete Selected Duplicate Row",
-                    type="primary",
-                    key="delete_button_" + suffix,
-                ):
-                    saved_review = S.reviews.get(chosen, {})
-
-                    if (
-                        saved_review.get("Decision")
-                        != "Confirmed issue"
-                    ):
-                        st.error(
-                            "First select Confirmed issue "
-                            "and click Save Review."
-                        )
-
-                    elif not reviewer.strip():
-                        st.error(
-                            "Enter reviewer name."
-                        )
-
-                    elif not deletion_reason.strip():
-                        st.error(
-                            "Enter deletion reason."
-                        )
-
-                    elif not deletion_approved:
-                        st.error(
-                            "Employee approval is required."
-                        )
-
-                    elif selected_row not in frame.index:
-                        st.error(
-                            "Selected row no longer exists."
-                        )
-
-                    elif (
-                        safe_text(
-                            frame.at[selected_row, key_col]
-                        ) != record
-                    ):
-                        st.error(
-                            "Selected row no longer matches."
-                        )
-
-                    elif (
-                        frame[key_col]
-                        .map(safe_text)
-                        .eq(record)
-                        .sum() < 2
-                    ):
-                        st.error(
-                            "This ID is no longer duplicated."
-                        )
-
-                    else:
-                        original_row_id = row_ids[
-                            int(selected_row)
-                        ]
-
-                        removed = (
-                            frame.loc[selected_row]
-                            .to_dict()
-                        )
-
-                        updated = (
-                            frame.drop(index=selected_row)
-                            .reset_index(drop=True)
-                        )
-
-                        updated_row_ids = [
-                            rid
-                            for i, rid in enumerate(row_ids)
-                            if i != int(selected_row)
-                        ]
-
-                        detail = (
-                            f"{report_name}, original Excel "
-                            f"row {original_row_id + 2}. "
-                            f"Deleted: {removed}. "
-                            f"Evidence: {deletion_reason}"
-                        )
-
-                        try:
-                            log_history(
-                                "Duplicate row deleted",
-                                chosen,
-                                record,
-                                reviewer.strip(),
-                                detail,
-                            )
-
-                        except sqlite3.Error as ex:
-                            st.error(
-                                "Audit save failed; "
-                                f"row not deleted: {ex}"
-                            )
-
-                        else:
-                            if side == "A":
-                                S.a = updated
-                                S.row_ids_a = updated_row_ids
-                            else:
-                                S.b = updated
-                                S.row_ids_b = updated_row_ids
-
-                            S.deletions += 1
-
-                            refresh()
-                            st.rerun()
+        if S.a is None:
+            st.info("Upload and compare two reports first.")
+
+        elif S.findings.empty:
+            st.success("No differences to investigate.")
 
         else:
-            st.info(
-                "This finding requires investigation. "
-                "Missing records are not added automatically."
+            f = S.findings
+
+            categories = [
+                "All"
+            ] + sorted(f["Issue"].unique().tolist())
+
+            category = st.selectbox(
+                "Filter findings",
+                categories,
             )
 
+            filtered = (
+                f if category == "All"
+                else f[f["Issue"] == category]
+            )
+
+            st.dataframe(
+                public_view(filtered)[
+                    ["Finding ID", "Record", "Issue"]
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            chosen = st.selectbox(
+                "Select finding",
+                filtered["Finding ID"].tolist(),
+            )
+
+            issue = f[
+                f["Finding ID"] == chosen
+            ].iloc[0]
+
+            record = issue["Record"]
+            suffix = f"{S.load_number}_{chosen}"
+
+            with st.container(border=True):
+                st.subheader(
+                    f"{record} · {issue['Issue']}"
+                )
+
+                st.write("**What Vexa found**")
+                st.write(issue["What Vexa found"])
+
+                st.write("**What to investigate**")
+                st.write(issue["Suggested check"])
+
+                previous = S.reviews.get(chosen, {})
+
+                reviewer = st.text_input(
+                    "Reviewed by",
+                    value=previous.get("Reviewer", "Analyst"),
+                    key="reviewer_" + suffix,
+                )
+
+                decisions = [
+                    "Needs follow-up",
+                    "Confirmed issue",
+                    "Expected difference",
+                    "Resolved",
+                ]
+
+                decision = st.selectbox(
+                    "Decision",
+                    decisions,
+                    index=(
+                        decisions.index(previous["Decision"])
+                        if previous.get("Decision") in decisions
+                        else 0
+                    ),
+                    key="decision_" + suffix,
+                )
+
+                notes = st.text_area(
+                    "What did you verify?",
+                    value=previous.get("Notes", ""),
+                    key="notes_" + suffix,
+                )
+
+                if st.button(
+                    "Save Review",
+                    type="primary",
+                    key="save_" + suffix,
+                ):
+                    if not reviewer.strip():
+                        st.error("Enter the reviewer name.")
+
+                    else:
+                        try:
+                            log_history(
+                                "Review saved",
+                                chosen,
+                                record,
+                                reviewer.strip(),
+                                f"{decision}: {notes}",
+                            )
+
+                        except sqlite3.Error as ex:
+                            st.error(
+                                f"Unable to save review: {ex}"
+                            )
+
+                        else:
+                            S.reviews[chosen] = {
+                                "Reviewer": reviewer.strip(),
+                                "Decision": decision,
+                                "Notes": notes,
+                                "Reviewed at": timestamp(),
+                            }
+
+                            if PUBLIC_DEMO:
+                                st.success(
+                                    "Review saved for this demo session."
+                                )
+                            else:
+                                st.success(
+                                    "Review saved permanently in SQLite."
+                                )
+
+            # ----------------------------------------------------
+            # VERIFIED VALUE CORRECTION
+            # ----------------------------------------------------
+
+            if issue["_kind"] == "value":
+                with st.container(border=True):
+                    st.subheader(
+                        "Apply a verified correction"
+                    )
+
+                    st.write(
+                        "Changes are applied to a working copy. "
+                        "Original uploads remain unchanged."
+                    )
+
+                    target = st.radio(
+                        "Which report contains the wrong value?",
+                        [S.na, S.nb],
+                        horizontal=True,
+                        key="target_" + suffix,
+                    )
+
+                    if target == S.na:
+                        frame = S.a
+                        idx = int(issue["_ia"])
+                        original = issue["_va"]
+                    else:
+                        frame = S.b
+                        idx = int(issue["_ib"])
+                        original = issue["_vb"]
+
+                    column = issue["_column"]
+
+                    st.write(f"**Column:** {column}")
+                    st.write(f"**Current value:** `{original}`")
+
+                    verified = st.text_input(
+                        "Correct value (verified by employee)",
+                        key="value_" + suffix,
+                    )
+
+                    proof = st.text_area(
+                        "How did you verify this value?",
+                        placeholder=(
+                            "Example: Checked the approved source report."
+                        ),
+                        key="proof_" + suffix,
+                    )
+
+                    confirm = st.checkbox(
+                        "I verified this correction and approve "
+                        "applying it to a copy.",
+                        key="confirm_" + suffix,
+                    )
+
+                    if st.button(
+                        "Apply Approved Correction",
+                        type="primary",
+                        key="apply_" + suffix,
+                    ):
+                        if (
+                            not reviewer.strip()
+                            or not verified.strip()
+                            or not proof.strip()
+                            or not confirm
+                        ):
+                            st.error(
+                                "Enter reviewer, correct value, "
+                                "evidence, and approval."
+                            )
+
+                        elif idx not in frame.index:
+                            st.error(
+                                "Selected row no longer exists."
+                            )
+
+                        elif safe_text(frame.at[idx, column]) != original:
+                            st.error(
+                                "The value has changed. "
+                                "Compare again before correcting."
+                            )
+
+                        elif verified.strip() == original:
+                            st.warning(
+                                "New value matches current value."
+                            )
+
+                        else:
+                            detail = (
+                                f"{target}, {column}: "
+                                f"{original!r} → "
+                                f"{verified.strip()!r}. "
+                                f"Evidence: {proof}"
+                            )
+
+                            try:
+                                log_history(
+                                    "Correction applied",
+                                    chosen,
+                                    record,
+                                    reviewer.strip(),
+                                    detail,
+                                )
+
+                            except sqlite3.Error as ex:
+                                st.error(
+                                    "Audit save failed; "
+                                    f"correction not applied: {ex}"
+                                )
+
+                            else:
+                                frame.at[
+                                    idx, column
+                                ] = verified.strip()
+
+                                refresh()
+                                st.rerun()
+
+            # ----------------------------------------------------
+            # VERIFIED DUPLICATE DELETION
+            # ----------------------------------------------------
+
+            elif issue["_kind"] == "duplicate":
+                st.info(
+                    "Possible duplicates must be verified "
+                    "before deleting any row."
+                )
+
+                with st.container(border=True):
+                    st.subheader(
+                        "Verified Duplicate Row Deletion"
+                    )
+
+                    side = issue["_target"]
+
+                    if side == "A":
+                        frame = S.a
+                        key_col = S.ka
+                        report_name = S.na
+                        row_ids = S.row_ids_a
+                    else:
+                        frame = S.b
+                        key_col = S.kb
+                        report_name = S.nb
+                        row_ids = S.row_ids_b
+
+                    candidates = frame[
+                        frame[key_col].map(safe_text) == record
+                    ]
+
+                    st.write(
+                        f"**Duplicate rows in {report_name}**"
+                    )
+
+                    preview = candidates.copy()
+
+                    preview.insert(
+                        0,
+                        "Original Excel Row",
+                        [
+                            row_ids[int(i)] + 2
+                            for i in candidates.index
+                        ],
+                    )
+
+                    st.dataframe(
+                        preview,
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+                    st.caption(
+                        "Select the exact row verified "
+                        "as unnecessary."
+                    )
+
+                    selected_row = st.selectbox(
+                        "Exact duplicate row to remove",
+                        candidates.index.tolist(),
+                        format_func=lambda i: (
+                            "Original Excel row "
+                            f"{row_ids[int(i)] + 2}"
+                        ),
+                        key="delete_row_" + suffix,
+                    )
+
+                    st.write("**Selected row preview**")
+
+                    st.dataframe(
+                        frame.loc[[selected_row]],
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+                    deletion_reason = st.text_area(
+                        "Why is this exact row safe to delete?",
+                        placeholder=(
+                            "Example: Verified against source records; "
+                            "accidental duplicate."
+                        ),
+                        key="delete_reason_" + suffix,
+                    )
+
+                    deletion_approved = st.checkbox(
+                        "I verified this exact duplicate and "
+                        "approve removing it from the "
+                        "corrected working copy.",
+                        key="delete_approval_" + suffix,
+                    )
+
+                    if st.button(
+                        "Delete Selected Duplicate Row",
+                        type="primary",
+                        key="delete_button_" + suffix,
+                    ):
+                        saved_review = S.reviews.get(chosen, {})
+
+                        if (
+                            saved_review.get("Decision")
+                            != "Confirmed issue"
+                        ):
+                            st.error(
+                                "First select Confirmed issue "
+                                "and click Save Review."
+                            )
+
+                        elif not reviewer.strip():
+                            st.error(
+                                "Enter reviewer name."
+                            )
+
+                        elif not deletion_reason.strip():
+                            st.error(
+                                "Enter deletion reason."
+                            )
+
+                        elif not deletion_approved:
+                            st.error(
+                                "Employee approval is required."
+                            )
+
+                        elif selected_row not in frame.index:
+                            st.error(
+                                "Selected row no longer exists."
+                            )
+
+                        elif (
+                            safe_text(
+                                frame.at[selected_row, key_col]
+                            ) != record
+                        ):
+                            st.error(
+                                "Selected row no longer matches."
+                            )
+
+                        elif (
+                            frame[key_col]
+                            .map(safe_text)
+                            .eq(record)
+                            .sum() < 2
+                        ):
+                            st.error(
+                                "This ID is no longer duplicated."
+                            )
+
+                        else:
+                            original_row_id = row_ids[
+                                int(selected_row)
+                            ]
+
+                            removed = (
+                                frame.loc[selected_row]
+                                .to_dict()
+                            )
+
+                            updated = (
+                                frame.drop(index=selected_row)
+                                .reset_index(drop=True)
+                            )
+
+                            updated_row_ids = [
+                                rid
+                                for i, rid in enumerate(row_ids)
+                                if i != int(selected_row)
+                            ]
+
+                            detail = (
+                                f"{report_name}, original Excel "
+                                f"row {original_row_id + 2}. "
+                                f"Deleted: {removed}. "
+                                f"Evidence: {deletion_reason}"
+                            )
+
+                            try:
+                                log_history(
+                                    "Duplicate row deleted",
+                                    chosen,
+                                    record,
+                                    reviewer.strip(),
+                                    detail,
+                                )
+
+                            except sqlite3.Error as ex:
+                                st.error(
+                                    "Audit save failed; "
+                                    f"row not deleted: {ex}"
+                                )
+
+                            else:
+                                if side == "A":
+                                    S.a = updated
+                                    S.row_ids_a = updated_row_ids
+                                else:
+                                    S.b = updated
+                                    S.row_ids_b = updated_row_ids
+
+                                S.deletions += 1
+
+                                refresh()
+                                st.rerun()
+
+            else:
+                st.info(
+                    "This finding requires investigation. "
+                    "Missing records are not added automatically."
+                )
 
 # ============================================================
 # PAGE 4 — GROQ AI ASSISTANT
 # ============================================================
 
 elif S.page == "AI Assistant":
-    st.title("AI Investigation Assistant")
-
-    st.write(
-        "Understand data differences, explore possible "
-        "business causes, and get investigation guidance "
-        "using a real Large Language Model."
-    )
-
-    st.caption(
-        "Powered by Groq LLM · Employee verification "
-        "required · No automatic data changes"
-    )
-
-    if S.a is None:
-        st.info(
-            "Upload and compare two fictional reports "
-            "before using the AI Assistant."
-        )
-
-    elif S.findings.empty:
-        st.success(
-            "No current differences found."
-        )
-
+    if S.active_mode == "Single File":
+        render_single_ai()
     else:
-        st.subheader("Select a Finding")
-
-        chosen = st.selectbox(
-            "Finding ID",
-            S.findings["Finding ID"].tolist(),
-            key="ai_finding_select",
-        )
-
-        issue = S.findings[
-            S.findings["Finding ID"] == chosen
-        ].iloc[0]
-
-        with st.container(border=True):
-            st.write(
-                f"**Record:** {issue['Record']}"
-            )
-
-            st.write(
-                f"**Issue:** {issue['Issue']}"
-            )
-
-            st.write("**What Vexa detected**")
-            st.write(issue["What Vexa found"])
-
-            st.write("**Existing suggested check**")
-            st.write(issue["Suggested check"])
-
-        st.divider()
-        st.subheader("Ask Vexa AI")
+        st.title("AI Investigation Assistant")
 
         st.write(
-            "Get possible business causes, impact, "
-            "investigation steps, and recommendations."
-        )
-
-        question = st.text_area(
-            "Optional question for AI",
-            placeholder=(
-                "Example: Why might this record "
-                "be missing from another report?"
-            ),
-            max_chars=500,
-            key="ai_question",
-        )
-
-        fictional_confirm = st.checkbox(
-            "I confirm this finding and my question "
-            "contain only fictional, non-sensitive "
-            "information suitable for an external AI service.",
-            key="ai_fictional_confirm",
+            "Understand data differences, explore possible "
+            "business causes, and get investigation guidance "
+            "using a real Large Language Model."
         )
 
         st.caption(
-            "Only the selected finding description, "
-            "issue type, suggested check, and optional question "
-            "are sent to Groq. Full Excel reports are not sent."
+            "Powered by Groq LLM · Employee verification "
+            "required · No automatic data changes"
         )
 
-        ai_context = (
-            S.load_number,
-            chosen,
-            str(issue["Record"]),
-            str(issue["Issue"]),
-            str(issue["What Vexa found"]),
-            str(issue["Suggested check"]),
-            question,
-        )
-
-        if st.button(
-            "Analyze Finding with AI ✨",
-            type="primary",
-            use_container_width=True,
-        ):
-            if not fictional_confirm:
-                st.warning(
-                    "Confirm fictional, non-sensitive "
-                    "information before calling AI."
-                )
-
-            else:
-                try:
-                    api_key = get_setting("GROQ_API_KEY", "")
-
-                    if not api_key:
-                        st.error(
-                            "Groq API key not found. "
-                            "Check .streamlit/secrets.toml "
-                            "or Streamlit Cloud secrets."
-                        )
-
-                    else:
-                        safe_finding = {
-                            "Issue": str(issue["Issue"]),
-                            "What Vexa found": str(
-                                issue["What Vexa found"]
-                            ),
-                            "Suggested check": str(
-                                issue["Suggested check"]
-                            ),
-                        }
-
-                        with st.spinner(
-                            "Vexa AI is analyzing..."
-                        ):
-                            response = analyze_finding(
-                                api_key=api_key,
-                                finding=safe_finding,
-                                question=question,
-                            )
-
-                        S.ai_response = response
-                        S.ai_context = ai_context
-
-                except Exception as ex:
-                    S.ai_response = None
-                    S.ai_context = None
-
-                    error_name = type(ex).__name__
-
-                    if error_name == "RateLimitError":
-                        st.warning(
-                            "Groq free-tier limit reached. "
-                            "Try again when quota resets."
-                        )
-
-                    elif error_name == "AuthenticationError":
-                        st.error(
-                            "Groq authentication failed. "
-                            "Check your API key."
-                        )
-
-                    elif error_name == "NotFoundError":
-                        st.error(
-                            "Groq model unavailable. "
-                            "Check ai_assistant.py."
-                        )
-
-                    elif error_name == "APIConnectionError":
-                        st.error(
-                            "Cannot connect to Groq. "
-                            "Check internet connection."
-                        )
-
-                    else:
-                        st.error(
-                            "AI request could not be completed. "
-                            f"Error type: {error_name}"
-                        )
-
-        if (
-            S.ai_response
-            and S.ai_context == ai_context
-        ):
-            st.divider()
-            st.subheader("Vexa AI Analysis")
-
-            with st.container(border=True):
-                st.markdown(S.ai_response)
-
-            st.caption(
-                "AI-generated guidance may be inaccurate. "
-                "Validate against trusted records."
+        if S.a is None:
+            st.info(
+                "Upload and compare two fictional reports "
+                "before using the AI Assistant."
             )
 
-            st.warning(
-                "AI has not modified either report. "
-                "An employee must verify evidence "
-                "and approve data changes."
+        elif S.findings.empty:
+            st.success(
+                "No current differences found."
+            )
+
+        else:
+            st.subheader("Select a Finding")
+
+            chosen = st.selectbox(
+                "Finding ID",
+                S.findings["Finding ID"].tolist(),
+                key="ai_finding_select",
+            )
+
+            issue = S.findings[
+                S.findings["Finding ID"] == chosen
+            ].iloc[0]
+
+            with st.container(border=True):
+                st.write(
+                    f"**Record:** {issue['Record']}"
+                )
+
+                st.write(
+                    f"**Issue:** {issue['Issue']}"
+                )
+
+                st.write("**What Vexa detected**")
+                st.write(issue["What Vexa found"])
+
+                st.write("**Existing suggested check**")
+                st.write(issue["Suggested check"])
+
+            st.divider()
+            st.subheader("Ask Vexa AI")
+
+            st.write(
+                "Get possible business causes, impact, "
+                "investigation steps, and recommendations."
+            )
+
+            question = st.text_area(
+                "Optional question for AI",
+                placeholder=(
+                    "Example: Why might this record "
+                    "be missing from another report?"
+                ),
+                max_chars=500,
+                key="ai_question",
+            )
+
+            fictional_confirm = st.checkbox(
+                "I confirm this finding and my question "
+                "contain only fictional, non-sensitive "
+                "information suitable for an external AI service.",
+                key="ai_fictional_confirm",
+            )
+
+            st.caption(
+                "Only the selected finding description, "
+                "issue type, suggested check, and optional question "
+                "are sent to Groq. Full Excel reports are not sent."
+            )
+
+            ai_context = (
+                S.load_number,
+                chosen,
+                str(issue["Record"]),
+                str(issue["Issue"]),
+                str(issue["What Vexa found"]),
+                str(issue["Suggested check"]),
+                question,
             )
 
             if st.button(
-                "Open Investigations",
+                "Analyze Finding with AI ✨",
                 type="primary",
-                key="ai_open_investigations",
+                use_container_width=True,
             ):
-                S.page = "Investigations"
-                st.rerun()
+                if not fictional_confirm:
+                    st.warning(
+                        "Confirm fictional, non-sensitive "
+                        "information before calling AI."
+                    )
 
+                else:
+                    try:
+                        api_key = get_setting("GROQ_API_KEY", "")
+
+                        if not api_key:
+                            st.error(
+                                "Groq API key not found. "
+                                "Check .streamlit/secrets.toml "
+                                "or Streamlit Cloud secrets."
+                            )
+
+                        else:
+                            safe_finding = {
+                                "Issue": str(issue["Issue"]),
+                                "What Vexa found": str(
+                                    issue["What Vexa found"]
+                                ),
+                                "Suggested check": str(
+                                    issue["Suggested check"]
+                                ),
+                            }
+
+                            with st.spinner(
+                                "Vexa AI is analyzing..."
+                            ):
+                                response = analyze_finding(
+                                    api_key=api_key,
+                                    finding=safe_finding,
+                                    question=question,
+                                )
+
+                            S.ai_response = response
+                            S.ai_context = ai_context
+
+                    except Exception as ex:
+                        S.ai_response = None
+                        S.ai_context = None
+
+                        error_name = type(ex).__name__
+
+                        if error_name == "RateLimitError":
+                            st.warning(
+                                "Groq free-tier limit reached. "
+                                "Try again when quota resets."
+                            )
+
+                        elif error_name == "AuthenticationError":
+                            st.error(
+                                "Groq authentication failed. "
+                                "Check your API key."
+                            )
+
+                        elif error_name == "NotFoundError":
+                            st.error(
+                                "Groq model unavailable. "
+                                "Check ai_assistant.py."
+                            )
+
+                        elif error_name == "APIConnectionError":
+                            st.error(
+                                "Cannot connect to Groq. "
+                                "Check internet connection."
+                            )
+
+                        else:
+                            st.error(
+                                "AI request could not be completed. "
+                                f"Error type: {error_name}"
+                            )
+
+            if (
+                S.ai_response
+                and S.ai_context == ai_context
+            ):
+                st.divider()
+                st.subheader("Vexa AI Analysis")
+
+                with st.container(border=True):
+                    st.markdown(S.ai_response)
+
+                st.caption(
+                    "AI-generated guidance may be inaccurate. "
+                    "Validate against trusted records."
+                )
+
+                st.warning(
+                    "AI has not modified either report. "
+                    "An employee must verify evidence "
+                    "and approve data changes."
+                )
+
+                if st.button(
+                    "Open Investigations",
+                    type="primary",
+                    key="ai_open_investigations",
+                ):
+                    S.page = "Investigations"
+                    st.rerun()
 
 # ============================================================
 # PAGE 5 — REVIEW HISTORY
@@ -2076,13 +2098,19 @@ elif S.page == "Review History":
         )
     else:
         st.caption(
-            "Audit history is saved in the local SQLite "
-            "database. Saved actions remain available "
-            "after restarting Vexa."
+            "Two-file audit actions are saved in local SQLite. "
+            "Single-file actions remain session-only."
         )
 
     try:
-        history = load_audit_history()
+        if S.active_mode == "Single File":
+            history = pd.DataFrame([{
+                "When": e["When"], "Analysis": "Single File", "Workspace": S.single_name,
+                "Action": e["Action"], "Original Excel Row": e["Original Excel Row"],
+                "Reviewer": e["Reviewer"], "Evidence": e["Evidence"]
+            } for e in reversed(S.single_events)])
+        else:
+            history = load_audit_history()
 
     except sqlite3.Error as ex:
         st.error(
@@ -2094,12 +2122,11 @@ elif S.page == "Review History":
             if PUBLIC_DEMO:
                 st.success(
                     f"{len(history)} audit actions "
-                    "in your demo session."
+                    "for this analysis in your demo session."
                 )
             else:
                 st.success(
-                    f"{len(history)} saved audit "
-                    "actions found in SQLite."
+                    f"{len(history)} review actions for the active analysis."
                 )
 
             st.dataframe(
@@ -2127,9 +2154,9 @@ elif S.page == "Review History":
         )
     else:
         st.caption(
-            "Audit actions are permanent locally. "
-            "Uploaded reports and corrected working "
-            "copies remain session-based."
+            "Two-file SQLite actions may persist locally. "
+            "Single-file actions and working copies are session-based."
+
         )
 
 
@@ -2138,281 +2165,284 @@ elif S.page == "Review History":
 # ============================================================
 
 elif S.page == "Export Results":
-    st.title("Export Results")
-
-    st.write(
-        "Preview original and corrected reports, "
-        "verify changes, and download only when ready."
-    )
-
-    if S.a is None:
-        st.info(
-            "Upload and compare two reports "
-            "before viewing exports."
-        )
-
+    if S.active_mode == "Single File":
+        render_single_export()
     else:
-        selected_report = st.radio(
-            "Select report",
-            ["Report A", "Report B"],
-            horizontal=True,
-            key="export_report_choice",
+        st.title("Export Results")
+
+        st.write(
+            "Preview original and corrected reports, "
+            "verify changes, and download only when ready."
         )
 
-        if selected_report == "Report A":
-            original_df = S.original_a
-            corrected_df = S.a
-            row_ids = S.row_ids_a
-            key_col = S.ka
-            report_name = S.na
-            prefix = "vexa_report_a"
-
-        else:
-            original_df = S.original_b
-            corrected_df = S.b
-            row_ids = S.row_ids_b
-            key_col = S.kb
-            report_name = S.nb
-            prefix = "vexa_report_b"
-
-        st.subheader(report_name)
-
-        changes = build_change_report(
-            original_df,
-            corrected_df,
-            row_ids,
-            key_col,
-        )
-
-        c1, c2, c3 = st.columns(3)
-
-        c1.metric(
-            "Original rows",
-            len(original_df),
-        )
-
-        c2.metric(
-            "Current rows",
-            len(corrected_df),
-        )
-
-        c3.metric(
-            "Changes made",
-            len(changes),
-        )
-
-        st.caption(
-            "Changes made counts corrected cells "
-            "and deleted rows. It does not count "
-            "unresolved differences between reports."
-        )
-
-        st.divider()
-
-        preview_mode = st.radio(
-            "Preview mode",
-            [
-                "Original Preview",
-                "Corrected Preview",
-                "Compare Changes",
-            ],
-            horizontal=True,
-            key="export_preview_mode",
-        )
-
-        search_text = st.text_input(
-            "Search by Request ID",
-            placeholder="Example: R-107",
-            key="export_search",
-        )
-
-        if preview_mode == "Original Preview":
-            st.subheader("Original Uploaded Report")
-
-            result = filtered_preview(
-                original_df,
-                key_col,
-                search_text,
-            )
-
-            st.caption(
-                f"Showing {len(result)} matching original rows."
-            )
-
-            st.dataframe(
-                result,
-                hide_index=True,
-                use_container_width=True,
-            )
-
+        if S.a is None:
             st.info(
-                "This is the original uploaded data. "
-                "Vexa has not modified this snapshot."
-            )
-
-        elif preview_mode == "Corrected Preview":
-            st.subheader("Current Corrected Report")
-
-            result = filtered_preview(
-                corrected_df,
-                key_col,
-                search_text,
-            )
-
-            st.caption(
-                f"Showing {len(result)} matching corrected rows."
-            )
-
-            st.dataframe(
-                result,
-                hide_index=True,
-                use_container_width=True,
-            )
-
-            st.success(
-                "This working copy includes approved "
-                "corrections and verified deletions."
+                "Upload and compare two reports "
+                "before viewing exports."
             )
 
         else:
-            st.subheader("Original vs Corrected Changes")
+            selected_report = st.radio(
+                "Select report",
+                ["Report A", "Report B"],
+                horizontal=True,
+                key="export_report_choice",
+            )
 
-            if search_text.strip():
-                visible_changes = changes[
-                    changes["Record ID"]
-                    .astype(str)
-                    .str.contains(
-                        search_text.strip(),
-                        case=False,
-                        regex=False,
-                        na=False,
-                    )
-                ]
+            if selected_report == "Report A":
+                original_df = S.original_a
+                corrected_df = S.a
+                row_ids = S.row_ids_a
+                key_col = S.ka
+                report_name = S.na
+                prefix = "vexa_report_a"
+
             else:
-                visible_changes = changes
+                original_df = S.original_b
+                corrected_df = S.b
+                row_ids = S.row_ids_b
+                key_col = S.kb
+                report_name = S.nb
+                prefix = "vexa_report_b"
 
-            if visible_changes.empty:
-                st.info(
-                    "No changes found for this search. "
-                    "Try another Request ID."
+            st.subheader(report_name)
+
+            changes = build_change_report(
+                original_df,
+                corrected_df,
+                row_ids,
+                key_col,
+            )
+
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric(
+                "Original rows",
+                len(original_df),
+            )
+
+            c2.metric(
+                "Current rows",
+                len(corrected_df),
+            )
+
+            c3.metric(
+                "Changes made",
+                len(changes),
+            )
+
+            st.caption(
+                "Changes made counts corrected cells "
+                "and deleted rows. It does not count "
+                "unresolved differences between reports."
+            )
+
+            st.divider()
+
+            preview_mode = st.radio(
+                "Preview mode",
+                [
+                    "Original Preview",
+                    "Corrected Preview",
+                    "Compare Changes",
+                ],
+                horizontal=True,
+                key="export_preview_mode",
+            )
+
+            search_text = st.text_input(
+                "Search by Request ID",
+                placeholder="Example: R-107",
+                key="export_search",
+            )
+
+            if preview_mode == "Original Preview":
+                st.subheader("Original Uploaded Report")
+
+                result = filtered_preview(
+                    original_df,
+                    key_col,
+                    search_text,
                 )
-            else:
+
+                st.caption(
+                    f"Showing {len(result)} matching original rows."
+                )
+
                 st.dataframe(
-                    visible_changes,
+                    result,
                     hide_index=True,
                     use_container_width=True,
                 )
 
-                st.caption(
-                    "Deleted rows show original contents. "
-                    "Value corrections show old and new values."
+                st.info(
+                    "This is the original uploaded data. "
+                    "Vexa has not modified this snapshot."
                 )
 
-        st.divider()
-        st.subheader("Download Reports")
+            elif preview_mode == "Corrected Preview":
+                st.subheader("Current Corrected Report")
 
-        original_col, corrected_col = st.columns(2)
+                result = filtered_preview(
+                    corrected_df,
+                    key_col,
+                    search_text,
+                )
 
-        excel_mime = (
-            "application/vnd.openxmlformats-"
-            "officedocument.spreadsheetml.sheet"
-        )
+                st.caption(
+                    f"Showing {len(result)} matching corrected rows."
+                )
 
-        with original_col:
-            st.write("**Original Report**")
+                st.dataframe(
+                    result,
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
-            st.download_button(
-                "Download Original — CSV",
-                csv_bytes(original_df),
-                file_name=f"{prefix}_original.csv",
-                mime="text/csv",
-                use_container_width=True,
-                key="export_original_csv",
+                st.success(
+                    "This working copy includes approved "
+                    "corrections and verified deletions."
+                )
+
+            else:
+                st.subheader("Original vs Corrected Changes")
+
+                if search_text.strip():
+                    visible_changes = changes[
+                        changes["Record ID"]
+                        .astype(str)
+                        .str.contains(
+                            search_text.strip(),
+                            case=False,
+                            regex=False,
+                            na=False,
+                        )
+                    ]
+                else:
+                    visible_changes = changes
+
+                if visible_changes.empty:
+                    st.info(
+                        "No changes found for this search. "
+                        "Try another Request ID."
+                    )
+                else:
+                    st.dataframe(
+                        visible_changes,
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+                    st.caption(
+                        "Deleted rows show original contents. "
+                        "Value corrections show old and new values."
+                    )
+
+            st.divider()
+            st.subheader("Download Reports")
+
+            original_col, corrected_col = st.columns(2)
+
+            excel_mime = (
+                "application/vnd.openxmlformats-"
+                "officedocument.spreadsheetml.sheet"
             )
 
-            try:
+            with original_col:
+                st.write("**Original Report**")
+
                 st.download_button(
-                    "Download Original — Excel",
-                    xlsx_bytes(original_df),
-                    file_name=f"{prefix}_original.xlsx",
-                    mime=excel_mime,
-                    use_container_width=True,
-                    key="export_original_excel",
-                )
-            except ImportError:
-                st.caption(
-                    "Install openpyxl for Excel download."
-                )
-
-        with corrected_col:
-            st.write("**Corrected Report**")
-
-            st.download_button(
-                "Download Corrected — CSV",
-                csv_bytes(corrected_df),
-                file_name=f"{prefix}_corrected.csv",
-                mime="text/csv",
-                use_container_width=True,
-                key="export_corrected_csv",
-            )
-
-            try:
-                st.download_button(
-                    "Download Corrected — Excel",
-                    xlsx_bytes(corrected_df),
-                    file_name=f"{prefix}_corrected.xlsx",
-                    mime=excel_mime,
-                    use_container_width=True,
-                    key="export_corrected_excel",
-                )
-            except ImportError:
-                st.caption(
-                    "Install openpyxl for Excel download."
-                )
-
-        st.divider()
-        st.subheader("Additional Reports")
-
-        st.download_button(
-            "Download difference report",
-            csv_bytes(public_view(S.findings)),
-            file_name="vexa_differences.csv",
-            mime="text/csv",
-        )
-
-        st.download_button(
-            "Download changes made",
-            csv_bytes(changes),
-            file_name=f"{prefix}_changes.csv",
-            mime="text/csv",
-        )
-
-        try:
-            saved_history = load_audit_history()
-
-            if not saved_history.empty:
-                st.download_button(
-                    "Download review & correction history",
-                    csv_bytes(saved_history),
-                    file_name="vexa_review_history.csv",
+                    "Download Original — CSV",
+                    csv_bytes(original_df),
+                    file_name=f"{prefix}_original.csv",
                     mime="text/csv",
+                    use_container_width=True,
+                    key="export_original_csv",
                 )
 
-        except sqlite3.Error as ex:
-            st.warning(
-                f"Could not load audit history: {ex}"
+                try:
+                    st.download_button(
+                        "Download Original — Excel",
+                        xlsx_bytes(original_df),
+                        file_name=f"{prefix}_original.xlsx",
+                        mime=excel_mime,
+                        use_container_width=True,
+                        key="export_original_excel",
+                    )
+                except ImportError:
+                    st.caption(
+                        "Install openpyxl for Excel download."
+                    )
+
+            with corrected_col:
+                st.write("**Corrected Report**")
+
+                st.download_button(
+                    "Download Corrected — CSV",
+                    csv_bytes(corrected_df),
+                    file_name=f"{prefix}_corrected.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="export_corrected_csv",
+                )
+
+                try:
+                    st.download_button(
+                        "Download Corrected — Excel",
+                        xlsx_bytes(corrected_df),
+                        file_name=f"{prefix}_corrected.xlsx",
+                        mime=excel_mime,
+                        use_container_width=True,
+                        key="export_corrected_excel",
+                    )
+                except ImportError:
+                    st.caption(
+                        "Install openpyxl for Excel download."
+                    )
+
+            st.divider()
+            st.subheader("Additional Reports")
+
+            st.download_button(
+                "Download difference report",
+                csv_bytes(public_view(S.findings)),
+                file_name="vexa_differences.csv",
+                mime="text/csv",
             )
 
-        if st.button(
-            "Compare current corrected copies again",
-            type="primary",
-        ):
-            refresh()
-            S.page = "Dashboard"
-            st.rerun()
+            st.download_button(
+                "Download changes made",
+                csv_bytes(changes),
+                file_name=f"{prefix}_changes.csv",
+                mime="text/csv",
+            )
 
-        st.caption(
-            "Original files are never overwritten. "
-            "Download corrected reports before ending "
-            "your session."
-        )
+            try:
+                saved_history = load_audit_history()
+
+                if not saved_history.empty:
+                    st.download_button(
+                        "Download review & correction history",
+                        csv_bytes(saved_history),
+                        file_name="vexa_review_history.csv",
+                        mime="text/csv",
+                    )
+
+            except sqlite3.Error as ex:
+                st.warning(
+                    f"Could not load audit history: {ex}"
+                )
+
+            if st.button(
+                "Compare current corrected copies again",
+                type="primary",
+            ):
+                refresh()
+                S.page = "Upload & Analyze"
+                st.rerun()
+
+            st.caption(
+                "Original files are never overwritten. "
+                "Download corrected reports before ending "
+                "your session."
+            )
